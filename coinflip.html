@@ -359,6 +359,13 @@
                         switchView('lobby');
                         return;
                     }
+
+                    // ADDED: Notify me if opponent cashed out
+                    if (data.endReason === 'cashout' && data.winnerId !== currentUser.uid) {
+                        alert(`Opponent cashed out! They took the pot of ${data.currentPot}p.`);
+                        switchView('lobby');
+                        return;
+                    }
                     
                     // If I lost and am still here (should be handled by actions, but failsafe)
                     if (data.winnerId !== currentUser.uid && (data.endReason === 'folded' || data.endReason === 'left')) {
