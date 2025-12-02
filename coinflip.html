@@ -41,11 +41,10 @@
         const db = getFirestore(app);
         
         // --- LOCALIZATION SYSTEM ---
-        let currentLang = localStorage.getItem('coinflip_lang') || 'ro';
+        let currentLang = localStorage.getItem('coinflip_lang') || 'en';
 
         const translations = {
             ro: {
-                // UI Static
                 app_title: "COINFLIP PVP",
                 nav_lobby: "Lobby",
                 nav_ranks: "Top",
@@ -74,8 +73,6 @@
                 btn_cancel: "Anulează & Refund",
                 btn_leave: "Ieși din joc",
                 btn_back_lobby: "ÎNAPOI ÎN LOBBY",
-                
-                // Alerts & Dynamic
                 auth_error: "Eroare la conectare: ",
                 confirm_logout: "Ești sigur că vrei să te deconectezi?",
                 bonus_claim: "REVENDICĂ 100p",
@@ -119,7 +116,6 @@
                 won_amount: "Ai câștigat"
             },
             en: {
-                // UI Static
                 app_title: "COINFLIP PVP",
                 nav_lobby: "Lobby",
                 nav_ranks: "Ranks",
@@ -148,8 +144,6 @@
                 btn_cancel: "Cancel & Refund",
                 btn_leave: "Leave / Forfeit",
                 btn_back_lobby: "BACK TO LOBBY",
-
-                // Alerts & Dynamic
                 auth_error: "Login error: ",
                 confirm_logout: "Are you sure you want to log out?",
                 bonus_claim: "CLAIM 100p",
@@ -194,23 +188,19 @@
             }
         };
 
-        // Helper function for JS strings
         window.t = (key) => {
             return translations[currentLang][key] || key;
         }
 
-        // Apply translations to HTML
         window.applyLanguage = (lang) => {
             currentLang = lang;
             localStorage.setItem('coinflip_lang', lang);
             
-            // Update buttons style
             document.getElementById('lang-ro').classList.toggle('text-yellow-400', lang === 'ro');
             document.getElementById('lang-ro').classList.toggle('text-gray-400', lang !== 'ro');
             document.getElementById('lang-en').classList.toggle('text-yellow-400', lang === 'en');
             document.getElementById('lang-en').classList.toggle('text-gray-400', lang !== 'en');
 
-            // Update all data-i18n elements
             document.querySelectorAll('[data-i18n]').forEach(el => {
                 const key = el.getAttribute('data-i18n');
                 if (translations[lang][key]) {
@@ -222,11 +212,8 @@
                 }
             });
             
-            // Refresh dynamic UI components if they are loaded
             if (currentUser && document.getElementById('view-lobby').classList.contains('hidden') === false) {
                updateBonusUI(); 
-               // Trigger re-render of lists effectively by calling listeners manually if needed, 
-               // but for simplicity we rely on next update or refresh.
             }
         }
 
@@ -243,6 +230,14 @@
         const COLLECTION_ROOMS = `coinflip_rooms`; 
         const BONUS_AMOUNT = 100;
         const BONUS_COOLDOWN = 24 * 60 * 60 * 1000; 
+
+        // !!! FIXED: Added the missing 'views' object !!!
+        const views = {
+            login: document.getElementById('view-login'),
+            lobby: document.getElementById('view-lobby'),
+            game: document.getElementById('view-game'),
+            leaderboard: document.getElementById('view-leaderboard')
+        };
 
         const ui = {
             balance: document.querySelectorAll('.ui-balance'),
@@ -295,9 +290,7 @@
                 setupUserListener();
                 setupActiveGamesListener();
                 
-                // Initialize language
                 applyLanguage(currentLang);
-                
                 window.switchView('lobby');
             } else {
                 applyLanguage(currentLang);
@@ -397,7 +390,6 @@
             });
         }
 
-        // --- Active Games ---
         function setupActiveGamesListener() {
             if (myActiveRoomsUnsubscribe) myActiveRoomsUnsubscribe();
             const q = query(
