@@ -80,7 +80,8 @@
             potDisplay: document.getElementById('pot-display'),
             leaderboardList: document.getElementById('leaderboard-list'),
             activeGamesList: document.getElementById('active-games-list'),
-            waitingControls: document.getElementById('waiting-controls')
+            waitingControls: document.getElementById('waiting-controls'),
+            activeControls: document.getElementById('active-controls')
         };
 
         // --- Auth & Init ---
@@ -145,7 +146,6 @@
             if (myActiveRoomsUnsubscribe) myActiveRoomsUnsubscribe();
             
             // Query rooms where I am Host OR Guest, and status is NOT finished
-            // Note: Firestore OR queries are tricky. We'll listen to "hostId == me" for now for the "My Bets" feature.
             const q = query(
                 collection(db, COLLECTION_ROOMS), 
                 where('hostId', '==', currentUser.uid),
@@ -172,7 +172,7 @@
                     el.innerHTML = `
                         <div>
                             <span class="text-xs font-bold px-2 py-1 rounded ${badgeColor} text-white mr-2">${badgeText}</span>
-                            <span class="font-bold text-white">$${data.betSize} Bet</span>
+                            <span class="font-bold text-white">${data.betSize}p Bet</span>
                             ${data.joinCode ? `<span class="ml-2 text-xs text-blue-400"><i class="fa-solid fa-key"></i> ${data.joinCode}</span>` : ''}
                         </div>
                         <button onclick="rejoinRoom('${doc.id}')" class="text-sm bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-white">
@@ -253,7 +253,7 @@
             // Check balance
             const userDoc = await getDoc(doc(db, COLLECTION_USERS, currentUser.uid));
             if (userDoc.data().balance < betSize) {
-                alert("Insufficient funds!");
+                alert("Insufficient points!");
                 return;
             }
 
@@ -331,8 +331,9 @@
             if (roomUnsubscribe) roomUnsubscribe();
             
             roomUnsubscribe = onSnapshot(doc(db, COLLECTION_ROOMS, roomId), async (snapshot) => {
+                
+                // Handle deletion
                 if (!snapshot.exists()) {
-                    // Room deleted (cancelled)
                     if (document.getElementById('view-game').classList.contains('hidden') === false) {
                         alert("Room closed or cancelled.");
                         switchView('lobby');
@@ -341,6 +342,32 @@
                 }
 
                 const data = snapshot.data();
+
+                // Handle Finished Game (Notifications)
+                if (data.status === 'finished') {
+                    // Avoid duplicate alerts if already viewing lobby
+                    if (document.getElementById('view-game').classList.contains('hidden')) return;
+
+                    if (data.endReason === 'folded' && data.winnerId === currentUser.uid) {
+                        alert(`Opponent folded! You win ${data.currentPot}p.`);
+                        switchView('lobby');
+                        return;
+                    }
+                    
+                    if (data.endReason === 'left' && data.winnerId === currentUser.uid) {
+                        alert(`Opponent left the game. You win ${data.currentPot}p.`);
+                        switchView('lobby');
+                        return;
+                    }
+                    
+                    // If I lost and am still here (should be handled by actions, but failsafe)
+                    if (data.winnerId !== currentUser.uid && (data.endReason === 'folded' || data.endReason === 'left')) {
+                        // Usually I triggered this so no alert needed, but just in case
+                        switchView('lobby');
+                        return;
+                    }
+                }
+
                 renderGameState(data);
 
             }, (error) => console.error("Sync error", error));
@@ -363,9 +390,11 @@
                 ui.opponentName.innerText = "Player Connected"; 
                 ui.opponentStatus.innerText = "Ready";
                 ui.waitingControls.classList.add('hidden'); // Hide Cancel button
+                ui.activeControls.classList.remove('hidden'); // Show Leave button
             } else {
                 ui.opponentName.innerText = "Waiting...";
                 ui.opponentStatus.innerText = "";
+                ui.activeControls.classList.add('hidden');
                 // Show Cancel Button only for Host when Waiting
                 if (amIHost && data.status === 'waiting') {
                     ui.waitingControls.classList.remove('hidden');
@@ -406,7 +435,7 @@
                 if (data.actionRequired === 'accept_double') {
                      const lastWinner = data.lastFlip.result === 'heads' ? data.hostId : data.guestId;
                      if (lastWinner !== currentUser.uid) {
-                         ui.status.innerHTML = `<span class="text-yellow-400">CHALLENGE!</span> Match $${data.betSize}?`;
+                         ui.status.innerHTML = `<span class="text-yellow-400">CHALLENGE!</span> Match ${data.betSize}p?`;
                          myActions.innerHTML = `
                             <div class="grid grid-cols-2 gap-2">
                                 <button onclick="respondToDouble(true)" class="bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg">ACCEPT</button>
@@ -423,9 +452,11 @@
             }
         }
 
-        // --- Cancel Logic ---
+        // --- Cancel / Leave Logic ---
+        
+        // 1. Cancel while waiting
         window.cancelBet = async () => {
-            if (!confirm("Cancel bet and refund money?")) return;
+            if (!confirm("Cancel bet and refund points?")) return;
             
             const roomRef = doc(db, COLLECTION_ROOMS, currentRoomId);
             const roomSnap = await getDoc(roomRef);
@@ -440,13 +471,42 @@
 
             // Refund
             await updateDoc(doc(db, COLLECTION_USERS, currentUser.uid), {
-                balance: increment(data.currentPot) // Refund the pot (which is just my bet)
+                balance: increment(data.currentPot)
             });
 
             // Delete Room
             await deleteDoc(roomRef);
             
             alert("Bet cancelled and refunded.");
+            switchView('lobby');
+        };
+
+        // 2. Leave/Forfeit while playing
+        window.leaveGame = async () => {
+            if (!confirm("Leave game? You will forfeit the pot to the opponent.")) return;
+            
+            const roomRef = doc(db, COLLECTION_ROOMS, currentRoomId);
+            const roomSnap = await getDoc(roomRef);
+            if (!roomSnap.exists()) return;
+            const data = roomSnap.data();
+
+            const opponentId = data.hostId === currentUser.uid ? data.guestId : data.hostId;
+            if (!opponentId) return; // Should not happen in playing state
+
+            // Give money to opponent
+            await updateDoc(doc(db, COLLECTION_USERS, opponentId), {
+                balance: increment(data.currentPot),
+                wins: increment(1)
+            });
+
+            // Mark room finished
+            await updateDoc(roomRef, {
+                status: 'finished',
+                endReason: 'left',
+                winnerId: opponentId
+            });
+
+            alert("You left the game.");
             switchView('lobby');
         };
 
@@ -462,8 +522,8 @@
             const myActions = document.getElementById('my-actions');
             myActions.innerHTML = `
                 <div class="flex flex-col gap-2">
-                    <button onclick="proposeDouble()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-lg border-b-4 border-purple-800">DOUBLE UP ($${roomData.currentPot * 2})</button>
-                    <button onclick="takeWinnings()" class="bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg border-b-4 border-green-800">CASH OUT $${roomData.currentPot}</button>
+                    <button onclick="proposeDouble()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-lg border-b-4 border-purple-800">DOUBLE UP (${roomData.currentPot * 2}p)</button>
+                    <button onclick="takeWinnings()" class="bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg border-b-4 border-green-800">CASH OUT ${roomData.currentPot}p</button>
                 </div>`;
         }
 
@@ -483,8 +543,12 @@
                  balance: increment(roomSnap.data().currentPot),
                  wins: increment(1)
              });
-             await updateDoc(roomRef, { status: 'finished' }); // Mark finished instead of deleting so other player sees result
-             alert(`You won $${roomSnap.data().currentPot}!`);
+             await updateDoc(roomRef, { 
+                 status: 'finished',
+                 endReason: 'cashout',
+                 winnerId: currentUser.uid
+             }); 
+             alert(`You won ${roomSnap.data().currentPot}p!`);
              switchView('lobby');
         };
 
@@ -494,18 +558,28 @@
             const data = roomSnap.data();
             
             if (!accepted) {
+                // FOLD LOGIC
                 const prevWinnerId = data.lastFlip.result === 'heads' ? data.hostId : data.guestId;
+                
+                // Give money to opponent (prev winner)
                 await updateDoc(doc(db, COLLECTION_USERS, prevWinnerId), {
                     balance: increment(data.currentPot),
                     wins: increment(1)
                 });
-                await updateDoc(roomRef, { status: 'finished' });
+                
+                // Notify opponent by updating room
+                await updateDoc(roomRef, { 
+                    status: 'finished',
+                    endReason: 'folded',
+                    winnerId: prevWinnerId
+                });
+                
                 alert("You folded.");
                 switchView('lobby');
             } else {
                 const cost = data.betSize;
                 const myUser = await getDoc(doc(db, COLLECTION_USERS, currentUser.uid));
-                if (myUser.data().balance < cost) return alert("Not enough funds!");
+                if (myUser.data().balance < cost) return alert("Not enough points!");
                 
                 await updateDoc(doc(db, COLLECTION_USERS, currentUser.uid), { balance: increment(-cost) });
                 await updateDoc(roomRef, {
@@ -529,6 +603,7 @@
              document.getElementById('my-actions').innerHTML = '';
              ui.potDisplay.innerText = '0';
              ui.waitingControls.classList.add('hidden');
+             ui.activeControls.classList.add('hidden');
         }
 
         async function loadLeaderboard() {
@@ -581,7 +656,7 @@
         </div>
         <div class="bg-gray-800 px-3 py-1 rounded-full flex items-center gap-2 border border-gray-700">
             <i class="fa-solid fa-wallet text-green-400"></i>
-            <span class="font-mono font-bold ui-balance">...</span>
+            <span class="font-mono font-bold ui-balance">...</span><span class="text-xs ml-1 text-green-400">p</span>
         </div>
     </nav>
 
@@ -606,7 +681,7 @@
             <!-- Profile -->
             <div class="bg-gray-800 p-4 rounded-xl mb-8 flex justify-between items-center border border-gray-700">
                 <div><div class="text-xs text-gray-500">PLAYING AS</div><div class="font-bold text-lg ui-username">Guest</div></div>
-                <div class="text-right"><div class="text-xs text-gray-500">BALANCE</div><div class="font-bold text-2xl text-green-400">$<span class="ui-balance">0</span></div></div>
+                <div class="text-right"><div class="text-xs text-gray-500">BALANCE</div><div class="font-bold text-2xl text-green-400"><span class="ui-balance">0</span>p</div></div>
             </div>
 
             <!-- Join Custom Code -->
@@ -621,17 +696,17 @@
             <!-- Quick Match -->
             <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4">Quick Match (Public)</h3>
             <div class="grid grid-cols-4 gap-2 mb-8">
-                <button onclick="findMatch(10)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-4 rounded-xl font-bold">$10</button>
-                <button onclick="findMatch(50)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-4 rounded-xl font-bold">$50</button>
-                <button onclick="findMatch(100)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-4 rounded-xl font-bold">$100</button>
-                <button onclick="findMatch(500)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-4 rounded-xl font-bold">$500</button>
+                <button onclick="findMatch(10)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-4 rounded-xl font-bold">10p</button>
+                <button onclick="findMatch(50)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-4 rounded-xl font-bold">50p</button>
+                <button onclick="findMatch(100)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-4 rounded-xl font-bold">100p</button>
+                <button onclick="findMatch(500)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-4 rounded-xl font-bold">500p</button>
             </div>
 
             <!-- Create Custom Room -->
             <div class="bg-gray-900 p-4 rounded-xl border border-gray-800">
                 <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4">Create Custom/Private Room</h3>
                 <div class="flex gap-2 mb-2">
-                    <input type="number" id="custom-bet-size" placeholder="Amount ($)" class="bg-gray-800 text-white px-4 py-2 rounded-lg w-1/3 border border-gray-700 outline-none">
+                    <input type="number" id="custom-bet-size" placeholder="Amount (p)" class="bg-gray-800 text-white px-4 py-2 rounded-lg w-1/3 border border-gray-700 outline-none">
                     <input type="text" id="custom-room-code" placeholder="Secret Code (Optional)" class="bg-gray-800 text-white px-4 py-2 rounded-lg flex-1 border border-gray-700 outline-none">
                 </div>
                 <button onclick="createPrivateRoom()" class="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg font-bold">CREATE ROOM</button>
@@ -642,8 +717,8 @@
         <!-- Game View -->
         <div id="view-game" class="h-full flex flex-col hidden relative">
             <div class="bg-gray-800 p-4 flex justify-between items-center shadow-lg z-10">
-                <div class="flex items-center gap-3"><div class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center font-bold">ME</div><div><div class="text-sm font-bold ui-username">Me</div><div class="text-xs text-green-400">$<span class="ui-balance">0</span></div></div></div>
-                <div class="text-center"><div class="text-xs text-gray-500 uppercase">Pot</div><div class="text-2xl font-bold text-yellow-400">$<span id="pot-display">0</span></div></div>
+                <div class="flex items-center gap-3"><div class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center font-bold">ME</div><div><div class="text-sm font-bold ui-username">Me</div><div class="text-xs text-green-400"><span class="ui-balance">0</span>p</div></div></div>
+                <div class="text-center"><div class="text-xs text-gray-500 uppercase">Pot</div><div class="text-2xl font-bold text-yellow-400"><span id="pot-display">0</span>p</div></div>
                 <div class="flex items-center gap-3 text-right"><div><div class="text-sm font-bold" id="opponent-name">Waiting...</div><div class="text-xs text-gray-400" id="opponent-status">...</div></div><div class="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center font-bold"><i class="fa-solid fa-user"></i></div></div>
             </div>
 
@@ -653,6 +728,11 @@
                 <!-- Waiting Controls (Cancel) -->
                 <div id="waiting-controls" class="absolute top-24 hidden">
                     <button onclick="cancelBet()" class="bg-red-900/50 hover:bg-red-800 text-red-200 border border-red-700 px-4 py-1 rounded text-sm"><i class="fa-solid fa-xmark mr-1"></i> Cancel Bet & Refund</button>
+                </div>
+
+                <!-- Active Game Controls (Leave) -->
+                <div id="active-controls" class="absolute top-24 hidden">
+                    <button onclick="leaveGame()" class="bg-red-900/50 hover:bg-red-800 text-red-200 border border-red-700 px-4 py-1 rounded text-sm"><i class="fa-solid fa-person-running mr-1"></i> Leave / Forfeit</button>
                 </div>
 
                 <div class="coin-container mb-12">
