@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ro">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -41,7 +41,7 @@
         const db = getFirestore(app);
         
         // --- LOCALIZATION SYSTEM ---
-        let currentLang = localStorage.getItem('coinflip_lang') || 'en';
+        let currentLang = localStorage.getItem('coinflip_lang') || 'ro';
 
         const translations = {
             ro: {
@@ -251,7 +251,8 @@
             leaderboardList: document.getElementById('leaderboard-list'),
             bonusCard: document.getElementById('bonus-card'),
             bonusBtn: document.getElementById('btn-claim-bonus'),
-            bonusTimer: document.getElementById('bonus-timer')
+            bonusTimer: document.getElementById('bonus-timer'),
+            potDisplay: document.getElementById('pot-display')
         };
 
         // --- Funcții Autentificare ---
