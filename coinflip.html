@@ -17,46 +17,44 @@
         // CONFIGURATION SECTION
         // ==========================================
         
-        // TODO: Replace the object below with your OWN keys from the Firebase Console
-        // 1. Go to https://console.firebase.google.com/
-        // 2. Click "Add Project" -> Name it "Coinflip"
-        // 3. Click the Web Icon (</>) -> Register app
-        // 4. Copy the "firebaseConfig" object and paste it below:
-        
+        // Your Firebase configuration (Preserved from previous context)
         const firebaseConfig = {
-        apiKey: "AIzaSyDSQD3YDBkwdrkUyw6xNEvYdLhbWPdEiKo",
-        authDomain: "coinflip-172f5.firebaseapp.com",
-        projectId: "coinflip-172f5",
-        storageBucket: "coinflip-172f5.firebasestorage.app",
-        messagingSenderId: "564936884544",
-        appId: "1:564936884544:web:6dc81d08e9b1c5b67c7aa5",
-        measurementId: "G-03GWNJGV4M"
+            apiKey: "AIzaSyDSQD3YDBkwdrkUyw6xNEvYdLhbWPdEiKo",
+            authDomain: "coinflip-172f5.firebaseapp.com",
+            projectId: "coinflip-172f5",
+            storageBucket: "coinflip-172f5.firebasestorage.app",
+            messagingSenderId: "564936884544",
+            appId: "1:564936884544:web:6dc81d08e9b1c5b67c7aa5",
+            measurementId: "G-03GWNJGV4M"
         };
 
         // ==========================================
         // END CONFIGURATION
         // ==========================================
 
-        // (Auto-fix for AI Preview: uses internal keys if you are testing inside the chat)
-        //if (Object.keys(firebaseConfig).length === 0 && typeof __firebase_config !== 'undefined') {
-         //    try { Object.assign(firebaseConfig, JSON.parse(__firebase_config)); } catch(e){}
-        //}
+        // SAFEGUARD: Only attempt to load internal chat config if your keys are missing.
+        // This prevents "ReferenceError: __firebase_config is not defined" on your website.
+        if ((!firebaseConfig.apiKey || firebaseConfig.apiKey === "") && typeof __firebase_config !== 'undefined') {
+             try { Object.assign(firebaseConfig, JSON.parse(__firebase_config)); } catch(e){}
+        }
 
         // Error Check: Did the user paste their keys?
-        //if (!firebaseConfig.apiKey) {
-        //    document.getElementById('view-login').innerHTML = `
-        //        <div class="text-center text-red-500 p-8">
-        //            <h1 class="text-3xl font-bold mb-4">MISSING CONFIGURATION</h1>
-        //            <p class="mb-4">You haven't added your Firebase keys to the code yet.</p>
-        //            <p class="text-sm text-gray-400">Open the HTML file and look for lines 18-28.<br>Paste your config object there.</p>
-        //        </div>`;
-        //    throw new Error("Firebase Config is missing. Please edit the HTML file.");
-        //}
+        if (!firebaseConfig.apiKey) {
+            document.getElementById('view-login').innerHTML = `
+                <div class="text-center text-red-500 p-8">
+                    <h1 class="text-3xl font-bold mb-4">MISSING CONFIGURATION</h1>
+                    <p class="mb-4">You haven't added your Firebase keys to the code yet.</p>
+                    <p class="text-sm text-gray-400">Open the HTML file and look for the 'firebaseConfig' section.<br>Paste your config object there.</p>
+                </div>`;
+            throw new Error("Firebase Config is missing. Please edit the HTML file.");
+        }
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app';
+        
+        // Use your project ID as the app identifier or fallback
+        const appId = firebaseConfig.projectId || 'coinflip-game';
 
         // --- Global State ---
         let currentUser = null;
@@ -65,7 +63,6 @@
         let userUnsubscribe = null;
 
         // --- Constants ---
-        // Using a generic path for personal use
         const COLLECTION_USERS = `coinflip_users`;
         const COLLECTION_ROOMS = `coinflip_rooms`; 
 
@@ -92,13 +89,23 @@
         // --- Auth & Init ---
         async function initAuth() {
             try {
-                // Check if we are in the AI preview (uses custom token)
+                let signedIn = false;
+
+                // 1. Try Custom Token (Only works in AI Preview Environment)
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    // Standard usage on GitHub/Localhost
+                    try {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                        signedIn = true;
+                    } catch (tokenError) {
+                        console.warn("Environment token mismatch. Falling back to Anonymous Auth.");
+                    }
+                }
+
+                // 2. Fallback to Anonymous (Works on your Website)
+                if (!signedIn) {
                     await signInAnonymously(auth);
                 }
+
             } catch (error) {
                 console.error("Auth failed", error);
                 
@@ -163,7 +170,14 @@
 
         // --- Lobby Logic ---
         window.createCustomRoom = async () => {
-             const betSize = parseInt(document.getElementById('custom-bet-size').value);
+             const betSizeInput = document.getElementById('custom-bet-size');
+             const betSize = parseInt(betSizeInput.value);
+             
+             if (!betSize || betSize <= 0) {
+                 alert("Please enter a valid bet amount.");
+                 return;
+             }
+             
              await joinMatch(betSize, true); // Force create
         };
 
@@ -189,16 +203,26 @@
             }
 
             // Look for open room
+            // Note: Firestore requires an index for complex queries. 
+            // If this fails in console, click the link in the error to build the index.
             const q = query(
                 collection(db, COLLECTION_ROOMS), 
                 where('status', '==', 'waiting'), 
                 where('betSize', '==', betSize),
-                limit(1)
+                limit(10) // Fetch a few to filter client-side if needed
             );
             
-            const snapshot = await getDocs(q);
+            let snapshot;
+            try {
+                snapshot = await getDocs(q);
+            } catch(e) {
+                console.error("Query Error (likely needs index):", e);
+                // Fallback: Create room if query fails
+                await createRoom(betSize);
+                return;
+            }
             
-            // Filter out my own rooms (firestore query limitation on 'not-equal')
+            // Filter out my own rooms
             const validRoom = snapshot.docs.find(d => d.data().hostId !== currentUser.uid);
 
             if (validRoom) {
@@ -226,7 +250,7 @@
                 turn: 'host',
                 createdAt: Date.now(),
                 lastFlip: null,
-                actionRequired: null // 'accept_double'
+                actionRequired: null
             });
 
             ui.status.innerText = "Waiting for player... Room ID: " + currentRoomId.slice(0, 4);
@@ -325,8 +349,6 @@
                 // Double Up Logic (After a flip)
                 if (data.actionRequired === 'accept_double') {
                      // Check if I am the one who needs to accept
-                     // The winner PROPOSED it, so the LOSER needs to accept.
-                     // We need to know who won last.
                      const lastWinner = data.lastFlip.result === 'heads' ? data.hostId : data.guestId;
                      const isWinner = lastWinner === currentUser.uid;
 
@@ -355,8 +377,6 @@
         // --- Actions ---
 
         window.performFlip = async () => {
-            // Only host technically flips in this simple logic, or purely random
-            // For security, backend functions should do this, but client-side is fine for prototype
             const result = Math.random() < 0.5 ? 'heads' : 'tails';
             
             await updateDoc(doc(db, COLLECTION_ROOMS, currentRoomId), {
@@ -369,7 +389,6 @@
 
         function showWinnerControls(roomData) {
             const myActions = document.getElementById('my-actions');
-            // Can only double if opponent has enough money? Skipped for complexity, assumed yes
             myActions.innerHTML = `
                 <div class="flex flex-col gap-2">
                     <button onclick="proposeDouble()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-lg shadow-lg border-b-4 border-purple-800">
@@ -383,9 +402,6 @@
         }
 
         window.proposeDouble = async () => {
-             // Winner risks Pot. Loser matches Pot. New Pot = Pot * 2 + Pot (if matched) -> No wait.
-             // Winner has 20. Risks 20. Loser puts in 20. Pot 40. Winner takes 40.
-             
              const roomRef = doc(db, COLLECTION_ROOMS, currentRoomId);
              const roomSnap = await getDoc(roomRef);
              const data = roomSnap.data();
@@ -422,7 +438,6 @@
             
             if (!accepted) {
                 // Fold. Opponent (Winner of prev round) takes the pot.
-                // Determine who is opponent (the one who proposed)
                 const prevWinnerId = data.lastFlip.result === 'heads' ? data.hostId : data.guestId;
                 
                 await updateDoc(doc(db, COLLECTION_USERS, prevWinnerId), {
@@ -435,13 +450,12 @@
                 switchView('lobby');
             } else {
                 // Accept. Deduct money from me.
-                const cost = data.betSize; // Established in proposeDouble
+                const cost = data.betSize;
                 
                 // Check funds
                 const myUser = await getDoc(doc(db, COLLECTION_USERS, currentUser.uid));
                 if (myUser.data().balance < cost) {
                     alert("Not enough funds to double!");
-                    // Force fold logic here or handle gracefully
                     return; 
                 }
                 
@@ -449,7 +463,7 @@
                     balance: increment(-cost)
                 });
                 
-                // Update Room: Increase Pot, Clear Action, Clear Last Flip
+                // Update Room
                 await updateDoc(roomRef, {
                     currentPot: increment(cost),
                     actionRequired: null,
