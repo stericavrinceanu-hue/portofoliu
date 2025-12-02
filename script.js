@@ -70,7 +70,7 @@ for (let i = 0; i < numStars; i++) {
 
 function openGame() {
     // Replace this with your actual hosted URL
-    const gameUrl = 'https://stelianvranceanu.github.io/coinflip.html'; 
+    const gameUrl = 'https://github.com/stericavrinceanu-hue/portofoliu/coinflip.html'; 
     
     // Opens a window sized for the game
     window.open(gameUrl, 'CoinFlipGame', 'width=500,height=800,menubar=no,toolbar=no,location=no,status=no');
