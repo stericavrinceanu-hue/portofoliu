@@ -38,20 +38,20 @@
         // ==========================================
 
         // (Auto-fix for AI Preview: uses internal keys if you are testing inside the chat)
-        if (Object.keys(firebaseConfig).length === 0 && typeof __firebase_config !== 'undefined') {
-             try { Object.assign(firebaseConfig, JSON.parse(__firebase_config)); } catch(e){}
-        }
+        //if (Object.keys(firebaseConfig).length === 0 && typeof __firebase_config !== 'undefined') {
+         //    try { Object.assign(firebaseConfig, JSON.parse(__firebase_config)); } catch(e){}
+        //}
 
         // Error Check: Did the user paste their keys?
-        if (!firebaseConfig.apiKey) {
-            document.getElementById('view-login').innerHTML = `
-                <div class="text-center text-red-500 p-8">
-                    <h1 class="text-3xl font-bold mb-4">MISSING CONFIGURATION</h1>
-                    <p class="mb-4">You haven't added your Firebase keys to the code yet.</p>
-                    <p class="text-sm text-gray-400">Open the HTML file and look for lines 18-28.<br>Paste your config object there.</p>
-                </div>`;
-            throw new Error("Firebase Config is missing. Please edit the HTML file.");
-        }
+        //if (!firebaseConfig.apiKey) {
+        //    document.getElementById('view-login').innerHTML = `
+        //        <div class="text-center text-red-500 p-8">
+        //            <h1 class="text-3xl font-bold mb-4">MISSING CONFIGURATION</h1>
+        //            <p class="mb-4">You haven't added your Firebase keys to the code yet.</p>
+        //            <p class="text-sm text-gray-400">Open the HTML file and look for lines 18-28.<br>Paste your config object there.</p>
+        //        </div>`;
+        //    throw new Error("Firebase Config is missing. Please edit the HTML file.");
+        //}
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
