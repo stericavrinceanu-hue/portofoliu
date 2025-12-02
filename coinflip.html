@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PvP Double or Nothing</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, query, where, getDocs, limit, orderBy, increment, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Configuration ---
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app';
+
+        // --- Global State ---
+        let currentUser = null;
+        let currentRoomId = null;
+        let roomUnsubscribe = null;
+        let userUnsubscribe = null;
+
+        // --- Constants ---
+        const COLLECTION_USERS = `artifacts/${appId}/public/data/users`;
+        const COLLECTION_ROOMS = `artifacts/${appId}/public/data/rooms`; // Public rooms for matchmaking
+
+        // --- DOM Elements ---
+        const views = {
+            login: document.getElementById('view-login'),
+            lobby: document.getElementById('view-lobby'),
+            game: document.getElementById('view-game'),
+            leaderboard: document.getElementById('view-leaderboard')
+        };
+
+        const ui = {
+            balance: document.querySelectorAll('.ui-balance'),
+            username: document.querySelectorAll('.ui-username'),
+            status: document.getElementById('game-status'),
+            coin: document.getElementById('coin'),
+            gameActions: document.getElementById('game-actions'),
+            opponentName: document.getElementById('opponent-name'),
+            opponentStatus: document.getElementById('opponent-status'),
+            potDisplay: document.getElementById('pot-display'),
+            leaderboardList: document.getElementById('leaderboard-list')
+        };
+
+        // --- Auth & Init ---
+        async function initAuth() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Auth failed", error);
+                alert("Connection failed. Please refresh.");
+            }
+        }
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                currentUser = user;
+                await ensureUserProfile();
+                setupUserListener();
+                switchView('lobby');
+            } else {
+                switchView('login');
+            }
+        });
+
+        async function ensureUserProfile() {
+            const userRef = doc(db, COLLECTION_USERS, currentUser.uid);
+            const snap = await getDoc(userRef);
+            if (!snap.exists()) {
+                // New user bonus
+                await setDoc(userRef, {
+                    username: `Player ${currentUser.uid.slice(0, 4)}`,
+                    balance: 1000,
+                    wins: 0,
+                    maxStreak: 0,
+                    createdAt: Date.now()
+                });
+            }
+        }
+
+        function setupUserListener() {
+            if (userUnsubscribe) userUnsubscribe();
+            userUnsubscribe = onSnapshot(doc(db, COLLECTION_USERS, currentUser.uid), (doc) => {
+                if (doc.exists()) {
+                    const data = doc.data();
+                    ui.balance.forEach(el => el.innerText = data.balance);
+                    ui.username.forEach(el => el.innerText = data.username);
+                }
+            }, (error) => console.error("User sync error:", error));
+        }
+
+        // --- Navigation ---
+        window.switchView = (viewName) => {
+            Object.values(views).forEach(el => el.classList.add('hidden'));
+            if(views[viewName]) views[viewName].classList.remove('hidden');
+            
+            if (viewName === 'leaderboard') loadLeaderboard();
+        };
+
+        // --- Lobby Logic ---
+        window.createCustomRoom = async () => {
+             const betSize = parseInt(document.getElementById('custom-bet-size').value);
+             await joinMatch(betSize, true); // Force create
+        };
+
+        window.findMatch = async (betSize) => {
+            await joinMatch(betSize, false);
+        };
+
+        async function joinMatch(betSize, forceCreate) {
+            // Check balance
+            const userDoc = await getDoc(doc(db, COLLECTION_USERS, currentUser.uid));
+            if (userDoc.data().balance < betSize) {
+                alert("Insufficient funds!");
+                return;
+            }
+
+            switchView('game');
+            resetGameUI();
+            ui.status.innerHTML = '<span class="animate-pulse">Searching for opponent...</span>';
+
+            if (forceCreate) {
+                await createRoom(betSize);
+                return;
+            }
+
+            // Look for open room
+            const q = query(
+                collection(db, COLLECTION_ROOMS), 
+                where('status', '==', 'waiting'), 
+                where('betSize', '==', betSize),
+                limit(1)
+            );
+            
+            const snapshot = await getDocs(q);
+            
+            // Filter out my own rooms (firestore query limitation on 'not-equal')
+            const validRoom = snapshot.docs.find(d => d.data().hostId !== currentUser.uid);
+
+            if (validRoom) {
+                await enterRoom(validRoom.id, betSize);
+            } else {
+                await createRoom(betSize);
+            }
+        }
+
+        async function createRoom(betSize) {
+            // Deduct initial bet
+            await updateDoc(doc(db, COLLECTION_USERS, currentUser.uid), {
+                balance: increment(-betSize)
+            });
+
+            const roomRef = doc(collection(db, COLLECTION_ROOMS));
+            currentRoomId = roomRef.id;
+
+            await setDoc(roomRef, {
+                hostId: currentUser.uid,
+                guestId: null,
+                betSize: betSize,
+                currentPot: betSize, // Only host's money so far
+                status: 'waiting',
+                turn: 'host',
+                createdAt: Date.now(),
+                lastFlip: null,
+                actionRequired: null // 'accept_double'
+            });
+
+            ui.status.innerText = "Waiting for player... Room ID: " + currentRoomId.slice(0, 4);
+            subscribeToRoom(currentRoomId);
+        }
+
+        async function enterRoom(roomId, betSize) {
+            // Deduct bet
+            await updateDoc(doc(db, COLLECTION_USERS, currentUser.uid), {
+                balance: increment(-betSize)
+            });
+
+            const roomRef = doc(db, COLLECTION_ROOMS, roomId);
+            
+            // Update room to playing
+            await updateDoc(roomRef, {
+                guestId: currentUser.uid,
+                status: 'playing',
+                currentPot: increment(betSize) // Add guest money
+            });
+            
+            currentRoomId = roomId;
+            subscribeToRoom(roomId);
+        }
+
+        // --- Game Logic ---
+        function subscribeToRoom(roomId) {
+            if (roomUnsubscribe) roomUnsubscribe();
+            
+            roomUnsubscribe = onSnapshot(doc(db, COLLECTION_ROOMS, roomId), async (snapshot) => {
+                if (!snapshot.exists()) {
+                    alert("Room closed.");
+                    switchView('lobby');
+                    return;
+                }
+
+                const data = snapshot.data();
+                renderGameState(data);
+
+            }, (error) => console.error("Room sync error", error));
+        }
+
+        function renderGameState(data) {
+            ui.potDisplay.innerText = data.currentPot;
+            const amIHost = data.hostId === currentUser.uid;
+            const opponentId = amIHost ? data.guestId : data.hostId;
+
+            // Opponent Display
+            if (!opponentId) {
+                ui.opponentName.innerText = "Waiting...";
+                ui.opponentStatus.innerText = "";
+            } else {
+                // In a real app we'd fetch opponent name, for now just generic
+                ui.opponentName.innerText = "Opponent Connected"; 
+                ui.opponentStatus.innerText = "Ready";
+            }
+
+            // Game Phases
+            const myActions = document.getElementById('my-actions');
+            myActions.innerHTML = ''; // Clear buttons
+
+            if (data.status === 'waiting') {
+                ui.status.innerText = "Waiting for challenger...";
+            } 
+            else if (data.status === 'playing') {
+                
+                // Handle Flips
+                if (data.lastFlip && data.lastFlip.timestamp > (window.lastProcessedFlip || 0)) {
+                    window.lastProcessedFlip = data.lastFlip.timestamp;
+                    animateFlip(data.lastFlip.result);
+                    
+                    setTimeout(() => {
+                         const winnerId = data.lastFlip.result === 'heads' ? data.hostId : data.guestId;
+                         const isMe = winnerId === currentUser.uid;
+                         
+                         if (isMe) {
+                             ui.status.innerHTML = `<span class="text-green-400 font-bold">YOU WON!</span>`;
+                             showWinnerControls(data);
+                         } else {
+                             ui.status.innerHTML = `<span class="text-red-400 font-bold">YOU LOST!</span> Waiting for winner...`;
+                         }
+                    }, 2000);
+                    return; // Stop rendering while animating
+                }
+
+                // Initial State or Post-Animation Idle
+                if (!data.lastFlip) {
+                    ui.status.innerText = "Game On! Host flipping...";
+                    if (amIHost) {
+                        myActions.innerHTML = `<button onclick="performFlip()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg shadow-lg transform hover:scale-105 transition">FLIP COIN</button>`;
+                    } else {
+                        ui.status.innerText = "Opponent is flipping...";
+                    }
+                }
+                
+                // Double Up Logic (After a flip)
+                if (data.actionRequired === 'accept_double') {
+                     // Check if I am the one who needs to accept
+                     // The winner PROPOSED it, so the LOSER needs to accept.
+                     // We need to know who won last.
+                     const lastWinner = data.lastFlip.result === 'heads' ? data.hostId : data.guestId;
+                     const isWinner = lastWinner === currentUser.uid;
+
+                     if (!isWinner) {
+                         // I am the loser, being challenged
+                         ui.status.innerHTML = `<span class="text-yellow-400">CHALLENGE!</span> Bet $${data.betSize} to win $${data.currentPot + data.betSize}?`;
+                         myActions.innerHTML = `
+                            <div class="grid grid-cols-2 gap-2">
+                                <button onclick="respondToDouble(true)" class="bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg">ACCEPT</button>
+                                <button onclick="respondToDouble(false)" class="bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-lg">FOLD</button>
+                            </div>
+                         `;
+                     } else {
+                         ui.status.innerText = "Waiting for opponent to accept double...";
+                     }
+                } else if (data.lastFlip && !data.actionRequired) {
+                    // Winner hasn't decided yet
+                     const winnerId = data.lastFlip.result === 'heads' ? data.hostId : data.guestId;
+                     if (winnerId === currentUser.uid) {
+                        showWinnerControls(data);
+                     }
+                }
+            }
+        }
+
+        // --- Actions ---
+
+        window.performFlip = async () => {
+            // Only host technically flips in this simple logic, or purely random
+            // For security, backend functions should do this, but client-side is fine for prototype
+            const result = Math.random() < 0.5 ? 'heads' : 'tails';
+            
+            await updateDoc(doc(db, COLLECTION_ROOMS, currentRoomId), {
+                lastFlip: {
+                    result: result,
+                    timestamp: Date.now()
+                }
+            });
+        };
+
+        function showWinnerControls(roomData) {
+            const myActions = document.getElementById('my-actions');
+            // Can only double if opponent has enough money? Skipped for complexity, assumed yes
+            myActions.innerHTML = `
+                <div class="flex flex-col gap-2">
+                    <button onclick="proposeDouble()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-lg shadow-lg border-b-4 border-purple-800">
+                        DOUBLE OR NOTHING ($${roomData.currentPot * 2})
+                    </button>
+                    <button onclick="takeWinnings()" class="bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg shadow-lg border-b-4 border-green-800">
+                        CASH OUT $${roomData.currentPot}
+                    </button>
+                </div>
+            `;
+        }
+
+        window.proposeDouble = async () => {
+             // Winner puts their winnings on the line (already in pot).
+             // Opponent needs to match the ORIGINAL bet size increment (or match the pot? Usually Double or Nothing means matching the current holding).
+             // Let's say Round 1: 10 vs 10. Pot 20.
+             // Double: Winner bets the 20. Loser must bet 20. New Pot 60. 
+             // Logic: "Start bet from that size".
+             // Simplified: Winner challenges. Loser must pay `currentPot` to stay in.
+             
+             // Let's stick to the prompt: "Double it again".
+             // Pot is X. Winner bets X. Loser bets X. New Pot 3X. 
+             // Actually, usually Double or Nothing is: I have 20. I bet 20. You bet 20. Win = 40.
+             
+             const roomRef = doc(db, COLLECTION_ROOMS, currentRoomId);
+             const roomSnap = await getDoc(roomRef);
+             const data = roomSnap.data();
+             
+             // The "Bet Size" for the NEXT round becomes the current POT value (or half it?). 
+             // Let's make the "cost to call" equal to the current pot / 2 (original bet) or escalate?
+             // Simplest engaging mechanic: 
+             // Winner risks Pot. Loser matches Pot. New Pot = Pot * 2 + Pot (if matched) -> No wait.
+             // Winner has 20. Risks 20. Loser puts in 20. Pot 40. Winner takes 40.
+             
+             // Update Room
+             await updateDoc(roomRef, {
+                 actionRequired: 'accept_double',
+                 betSize: data.currentPot // The amount the loser has to pay to play
+             });
+        };
+        
+        window.takeWinnings = async () => {
+             const roomRef = doc(db, COLLECTION_ROOMS, currentRoomId);
+             const roomSnap = await getDoc(roomRef);
+             const data = roomSnap.data();
+             
+             // Pay the winner
+             await updateDoc(doc(db, COLLECTION_USERS, currentUser.uid), {
+                 balance: increment(data.currentPot),
+                 wins: increment(1)
+             });
+             
+             // Close room
+             await updateDoc(roomRef, { status: 'finished' });
+             
+             alert(`You won $${data.currentPot}!`);
+             switchView('lobby');
+        };
+
+        window.respondToDouble = async (accepted) => {
+            const roomRef = doc(db, COLLECTION_ROOMS, currentRoomId);
+            const roomSnap = await getDoc(roomRef);
+            const data = roomSnap.data();
+            
+            if (!accepted) {
+                // Fold. Opponent (Winner of prev round) takes the pot.
+                // Determine who is opponent (the one who proposed)
+                const prevWinnerId = data.lastFlip.result === 'heads' ? data.hostId : data.guestId;
+                
+                await updateDoc(doc(db, COLLECTION_USERS, prevWinnerId), {
+                    balance: increment(data.currentPot),
+                    wins: increment(1)
+                });
+                
+                await updateDoc(roomRef, { status: 'finished' });
+                alert("You folded. Opponent took the pot.");
+                switchView('lobby');
+            } else {
+                // Accept. Deduct money from me.
+                const cost = data.betSize; // Established in proposeDouble
+                
+                // Check funds
+                const myUser = await getDoc(doc(db, COLLECTION_USERS, currentUser.uid));
+                if (myUser.data().balance < cost) {
+                    alert("Not enough funds to double!");
+                    // Force fold logic here or handle gracefully
+                    return; 
+                }
+                
+                await updateDoc(doc(db, COLLECTION_USERS, currentUser.uid), {
+                    balance: increment(-cost)
+                });
+                
+                // Update Room: Increase Pot, Clear Action, Clear Last Flip
+                await updateDoc(roomRef, {
+                    currentPot: increment(cost),
+                    actionRequired: null,
+                    lastFlip: null // Triggers new round UI
+                });
+            }
+        };
+
+        // --- Visuals ---
+        function animateFlip(result) {
+            const coin = document.getElementById('coin');
+            coin.style.animation = 'none';
+            coin.offsetHeight; /* reflow */
+            
+            if (result === 'heads') {
+                coin.style.animation = "flipHeads 2s forwards";
+            } else {
+                coin.style.animation = "flipTails 2s forwards";
+            }
+        }
+
+        function resetGameUI() {
+             document.getElementById('coin').style.animation = 'none';
+             document.getElementById('my-actions').innerHTML = '';
+             ui.potDisplay.innerText = '0';
+        }
+
+        // --- Leaderboard ---
+        async function loadLeaderboard() {
+            ui.leaderboardList.innerHTML = '<div class="text-center p-4">Loading...</div>';
+            
+            const q = query(collection(db, COLLECTION_USERS), orderBy("wins", "desc"), limit(10));
+            const snap = await getDocs(q);
+            
+            let html = '';
+            let rank = 1;
+            snap.forEach(doc => {
+                const d = doc.data();
+                html += `
+                    <div class="flex justify-between items-center bg-gray-800 p-3 rounded mb-2 border border-gray-700">
+                        <div class="flex items-center gap-3">
+                            <span class="text-yellow-500 font-bold text-xl">#${rank++}</span>
+                            <span class="font-bold">${d.username}</span>
+                        </div>
+                        <div class="text-green-400 font-mono">${d.wins} Wins</div>
+                    </div>
+                `;
+            });
+            
+            ui.leaderboardList.innerHTML = html || '<div class="text-center text-gray-500">No players yet.</div>';
+        }
+
+        // --- Bootstrap ---
+        initAuth();
+
+    </script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Righteous&family=Roboto:wght@400;700&display=swap');
+        
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #0f172a;
+            color: white;
+        }
+
+        .title-font { font-family: 'Righteous', cursive; }
+
+        /* 3D Coin */
+        .coin-container { perspective: 1000px; width: 120px; height: 120px; margin: 0 auto; }
+        .coin { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; transition: transform 0.5s; }
+        .coin-face {
+            position: absolute; width: 100%; height: 100%; border-radius: 50%;
+            backface-visibility: hidden; display: flex; align-items: center; justify-content: center;
+            border: 4px solid #d4af37; box-shadow: 0 0 15px rgba(255,215,0,0.3);
+        }
+        .heads { background: radial-gradient(circle at 30% 30%, #ffd700, #b8860b); transform: rotateY(0deg); }
+        .tails { background: radial-gradient(circle at 30% 30%, #c0c0c0, #808080); transform: rotateY(180deg); }
+        
+        @keyframes flipHeads { 0% { transform: rotateY(0); } 100% { transform: rotateY(1800deg); } }
+        @keyframes flipTails { 0% { transform: rotateY(0); } 100% { transform: rotateY(1980deg); } }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+    <!-- Top Navigation -->
+    <nav class="bg-gray-900 border-b border-gray-800 p-4 flex justify-between items-center z-10">
+        <div class="flex items-center gap-2" onclick="switchView('lobby')">
+            <i class="fa-solid fa-coins text-yellow-500 text-2xl"></i>
+            <span class="title-font text-xl tracking-wider hidden sm:block">COINFLIP PVP</span>
+        </div>
+        
+        <div class="flex gap-4">
+            <button onclick="switchView('lobby')" class="hover:text-yellow-400 transition"><i class="fa-solid fa-gamepad"></i> Lobby</button>
+            <button onclick="switchView('leaderboard')" class="hover:text-yellow-400 transition"><i class="fa-solid fa-trophy"></i> Ranks</button>
+        </div>
+
+        <div class="bg-gray-800 px-3 py-1 rounded-full flex items-center gap-2 border border-gray-700">
+            <i class="fa-solid fa-wallet text-green-400"></i>
+            <span class="font-mono font-bold ui-balance">...</span>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative overflow-y-auto">
+
+        <!-- Login / Loading View -->
+        <div id="view-login" class="absolute inset-0 flex items-center justify-center bg-gray-900 z-50">
+            <div class="text-center animate-pulse">
+                <i class="fa-solid fa-circle-notch fa-spin text-4xl text-yellow-500 mb-4"></i>
+                <h2 class="text-xl">Connecting to Server...</h2>
+            </div>
+        </div>
+
+        <!-- Lobby View -->
+        <div id="view-lobby" class="p-6 max-w-2xl mx-auto hidden">
+            <div class="text-center mb-8">
+                <h1 class="text-3xl title-font text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500 mb-2">PICK YOUR STAKES</h1>
+                <p class="text-gray-400">Double or Nothing against real players.</p>
+            </div>
+
+            <!-- Profile Snippet -->
+            <div class="bg-gray-800 p-4 rounded-xl mb-8 flex justify-between items-center border border-gray-700">
+                <div>
+                    <div class="text-xs text-gray-500">PLAYING AS</div>
+                    <div class="font-bold text-lg ui-username">Guest</div>
+                </div>
+                <div class="text-right">
+                    <div class="text-xs text-gray-500">BALANCE</div>
+                    <div class="font-bold text-2xl text-green-400">$<span class="ui-balance">0</span></div>
+                </div>
+            </div>
+
+            <!-- Quick Match Grid -->
+            <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4">Quick Match</h3>
+            <div class="grid grid-cols-2 gap-4 mb-8">
+                <button onclick="findMatch(10)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-6 rounded-xl transition group">
+                    <div class="text-gray-400 text-sm mb-1">Entry</div>
+                    <div class="text-2xl font-bold text-white group-hover:text-yellow-400">$10</div>
+                </button>
+                <button onclick="findMatch(50)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-6 rounded-xl transition group">
+                    <div class="text-gray-400 text-sm mb-1">Entry</div>
+                    <div class="text-2xl font-bold text-white group-hover:text-yellow-400">$50</div>
+                </button>
+                <button onclick="findMatch(100)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-6 rounded-xl transition group">
+                    <div class="text-gray-400 text-sm mb-1">Entry</div>
+                    <div class="text-2xl font-bold text-white group-hover:text-yellow-400">$100</div>
+                </button>
+                <button onclick="findMatch(500)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-purple-500 p-6 rounded-xl transition group">
+                    <div class="text-purple-400 text-sm mb-1">HIGH ROLLER</div>
+                    <div class="text-2xl font-bold text-white group-hover:text-purple-400">$500</div>
+                </button>
+            </div>
+
+            <!-- Custom Room -->
+            <div class="bg-gray-900 p-4 rounded-xl border border-gray-800">
+                <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4">Create Custom Room</h3>
+                <div class="flex gap-2">
+                    <input type="number" id="custom-bet-size" placeholder="Bet Amount" class="bg-gray-800 text-white px-4 py-2 rounded-lg flex-1 border border-gray-700 focus:border-yellow-500 outline-none">
+                    <button onclick="createCustomRoom()" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg font-bold">CREATE</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game View -->
+        <div id="view-game" class="h-full flex flex-col hidden relative">
+            <!-- HUD -->
+            <div class="bg-gray-800 p-4 flex justify-between items-center shadow-lg z-10">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center font-bold">ME</div>
+                    <div>
+                        <div class="text-sm font-bold ui-username">Me</div>
+                        <div class="text-xs text-green-400">$<span class="ui-balance">0</span></div>
+                    </div>
+                </div>
+                <div class="text-center">
+                    <div class="text-xs text-gray-500 uppercase">Current Pot</div>
+                    <div class="text-2xl font-bold text-yellow-400">$<span id="pot-display">0</span></div>
+                </div>
+                <div class="flex items-center gap-3 text-right">
+                    <div>
+                        <div class="text-sm font-bold" id="opponent-name">Waiting...</div>
+                        <div class="text-xs text-gray-400" id="opponent-status">...</div>
+                    </div>
+                    <div class="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center font-bold"><i class="fa-solid fa-user"></i></div>
+                </div>
+            </div>
+
+            <!-- Arena -->
+            <div class="flex-1 flex flex-col items-center justify-center p-6 bg-gradient-to-b from-gray-900 to-black relative">
+                
+                <div id="game-status" class="text-xl mb-8 font-bold text-center h-8">Initializing...</div>
+
+                <div class="coin-container mb-12">
+                    <div class="coin" id="coin">
+                        <div class="coin-face heads"><i class="fa-solid fa-crown text-4xl text-white"></i></div>
+                        <div class="coin-face tails"><i class="fa-solid fa-skull text-4xl text-white"></i></div>
+                    </div>
+                </div>
+
+                <!-- Action Bar -->
+                <div id="game-actions" class="w-full max-w-md">
+                    <div id="my-actions" class="flex flex-col gap-2">
+                        <!-- Buttons injected by JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Leaderboard View -->
+        <div id="view-leaderboard" class="p-6 max-w-2xl mx-auto hidden">
+            <h2 class="text-2xl font-bold mb-6 text-yellow-500"><i class="fa-solid fa-crown mr-2"></i>Global Rankings</h2>
+            <div id="leaderboard-list">
+                <!-- Injected by JS -->
+            </div>
+        </div>
+
+    </main>
+</body>
+</html>
