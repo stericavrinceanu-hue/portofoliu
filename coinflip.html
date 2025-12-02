@@ -231,20 +231,6 @@
         const BONUS_AMOUNT = 100;
         const BONUS_COOLDOWN = 24 * 60 * 60 * 1000; 
 
-        // Initial DOM Elements (Lazy getters used where critical)
-        const ui = {
-            balance: document.querySelectorAll('.ui-balance'),
-            username: document.querySelectorAll('.ui-username'),
-            avatar: document.querySelectorAll('.ui-avatar'),
-            status: document.getElementById('game-status'),
-            coin: document.getElementById('coin'),
-            activeGamesList: document.getElementById('active-games-list'),
-            leaderboardList: document.getElementById('leaderboard-list'),
-            bonusCard: document.getElementById('bonus-card'),
-            bonusBtn: document.getElementById('btn-claim-bonus'),
-            bonusTimer: document.getElementById('bonus-timer')
-        };
-
         // --- Funcții Autentificare ---
 
         window.loginGoogle = async () => {
@@ -319,28 +305,33 @@
             const now = Date.now();
             const lastClaim = userData.lastBonusClaim || 0;
             const diff = now - lastClaim;
+            
+            const bonusBtn = document.getElementById('btn-claim-bonus');
+            const bonusTimer = document.getElementById('bonus-timer');
+
+            if (!bonusBtn || !bonusTimer) return;
 
             if (diff >= BONUS_COOLDOWN) {
-                ui.bonusBtn.disabled = false;
-                ui.bonusBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-                ui.bonusBtn.classList.add('animate-pulse');
-                ui.bonusBtn.innerHTML = `<i class="fa-solid fa-gift mr-2"></i>${t('bonus_claim')}`;
-                ui.bonusTimer.innerText = t('bonus_ready');
-                ui.bonusTimer.classList.add('text-green-400');
+                bonusBtn.disabled = false;
+                bonusBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                bonusBtn.classList.add('animate-pulse');
+                bonusBtn.innerHTML = `<i class="fa-solid fa-gift mr-2"></i>${t('bonus_claim')}`;
+                bonusTimer.innerText = t('bonus_ready');
+                bonusTimer.classList.add('text-green-400');
                 if(bonusInterval) clearInterval(bonusInterval);
             } else {
-                ui.bonusBtn.disabled = true;
-                ui.bonusBtn.classList.add('opacity-50', 'cursor-not-allowed');
-                ui.bonusBtn.classList.remove('animate-pulse');
-                ui.bonusBtn.innerHTML = `<i class="fa-solid fa-clock mr-2"></i>${t('bonus_wait')}`;
-                ui.bonusTimer.classList.remove('text-green-400');
+                bonusBtn.disabled = true;
+                bonusBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                bonusBtn.classList.remove('animate-pulse');
+                bonusBtn.innerHTML = `<i class="fa-solid fa-clock mr-2"></i>${t('bonus_wait')}`;
+                bonusTimer.classList.remove('text-green-400');
                 
                 const timeLeft = BONUS_COOLDOWN - diff;
                 const hours = Math.floor((timeLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
                 const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
                 const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
                 
-                ui.bonusTimer.innerText = `${t('bonus_next')} ${hours}h ${minutes}m ${seconds}s`;
+                bonusTimer.innerText = `${t('bonus_next')} ${hours}h ${minutes}m ${seconds}s`;
             }
         }
 
@@ -350,7 +341,8 @@
             const lastClaim = userData.lastBonusClaim || 0;
             
             if (now - lastClaim >= BONUS_COOLDOWN) {
-                ui.bonusBtn.disabled = true;
+                const bonusBtn = document.getElementById('btn-claim-bonus');
+                if(bonusBtn) bonusBtn.disabled = true;
                 try {
                     await updateDoc(doc(db, COLLECTION_USERS, currentUser.uid), {
                         balance: increment(BONUS_AMOUNT),
@@ -369,9 +361,9 @@
             userUnsubscribe = onSnapshot(doc(db, COLLECTION_USERS, currentUser.uid), (doc) => {
                 if (doc.exists()) {
                     userData = doc.data();
-                    ui.balance.forEach(el => el.innerText = userData.balance);
-                    ui.username.forEach(el => el.innerText = userData.username);
-                    ui.avatar.forEach(img => {
+                    document.querySelectorAll('.ui-balance').forEach(el => el.innerText = userData.balance);
+                    document.querySelectorAll('.ui-username').forEach(el => el.innerText = userData.username);
+                    document.querySelectorAll('.ui-avatar').forEach(img => {
                         img.src = userData.photoURL || `https://api.dicebear.com/9.x/bottts-neutral/svg?seed=${currentUser.uid}`;
                     });
                     updateBonusUI();
@@ -390,7 +382,8 @@
             );
 
             myActiveRoomsUnsubscribe = onSnapshot(q, (snapshot) => {
-                const list = ui.activeGamesList;
+                const list = document.getElementById('active-games-list');
+                if(!list) return;
                 list.innerHTML = '';
                 if (snapshot.empty) {
                     list.innerHTML = `<div class="text-gray-500 text-sm italic">${t('no_active_bets')}</div>`;
@@ -454,7 +447,9 @@
         window.joinByCode = async () => {
             const code = document.getElementById('join-room-code').value.trim();
             if (!code) return alert(t('enter_code'));
-            ui.status.innerHTML = `<span class="animate-pulse">${t('searching')}</span>`;
+            const statusEl = document.getElementById('game-status');
+            if(statusEl) statusEl.innerHTML = `<span class="animate-pulse">${t('searching')}</span>`;
+            
             const q = query(
                 collection(db, COLLECTION_ROOMS), 
                 where('joinCode', '==', code),
@@ -473,7 +468,9 @@
             if (userData.balance < betSize) { alert(t('insufficient_funds')); return; }
             window.switchView('game');
             resetGameUI();
-            ui.status.innerHTML = `<span class="animate-pulse">${t('searching')}</span>`;
+            
+            const statusEl = document.getElementById('game-status');
+            if(statusEl) statusEl.innerHTML = `<span class="animate-pulse">${t('searching')}</span>`;
 
             if (forceCreate) { await createRoom(betSize, joinCode); return; }
 
@@ -486,8 +483,6 @@
             
             try {
                 let snapshot = await getDocs(q);
-                
-                // Memory Filter: Not my room AND (public search -> no code | private search -> ignored here)
                 const validRoom = snapshot.docs.find(d => {
                     const data = d.data();
                     return data.hostId !== currentUser.uid && !data.joinCode;
@@ -569,36 +564,40 @@
             const potDisplay = document.getElementById('pot-display');
             if(potDisplay) potDisplay.innerText = data.currentPot;
             
+            const statusEl = document.getElementById('game-status');
             const waitingControls = document.getElementById('waiting-controls');
             const activeControls = document.getElementById('active-controls');
+            const opponentName = document.getElementById('opponent-name');
+            const opponentStatus = document.getElementById('opponent-status');
+            const myActions = document.getElementById('my-actions');
 
             if (data.status === 'finished') {
                 const isWinner = data.winnerId === currentUser.uid;
                 const resultText = isWinner ? t('you_won') : t('you_lost');
                 const colorClass = isWinner ? 'text-green-500' : 'text-red-500';
-                ui.status.innerHTML = `<span class="${colorClass} font-bold text-2xl">${resultText}</span><br><span class="text-sm text-gray-400">${t('reason')} ${data.endReason}</span>`;
-                document.getElementById('my-actions').innerHTML = `<button onclick="switchView('lobby')" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-lg border-b-4 border-gray-900 mt-4">${t('btn_back_lobby')}</button>`;
+                if(statusEl) statusEl.innerHTML = `<span class="${colorClass} font-bold text-2xl">${resultText}</span><br><span class="text-sm text-gray-400">${t('reason')} ${data.endReason}</span>`;
+                if(myActions) myActions.innerHTML = `<button onclick="switchView('lobby')" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-lg border-b-4 border-gray-900 mt-4">${t('btn_back_lobby')}</button>`;
                 if(waitingControls) waitingControls.classList.add('hidden');
                 if(activeControls) activeControls.classList.add('hidden');
                 return;
             }
 
             const amIHost = data.hostId === currentUser.uid;
-            if (data.status === 'waiting' && data.joinCode) {
-                ui.status.innerHTML = `${t('room_code')} <span class="text-yellow-400 font-mono text-2xl tracking-widest">${data.joinCode}</span>`;
-            } else if (data.status === 'waiting') {
-                ui.status.innerText = t('waiting_opponent');
+            if (data.status === 'waiting' && data.joinCode && statusEl) {
+                statusEl.innerHTML = `${t('room_code')} <span class="text-yellow-400 font-mono text-2xl tracking-widest">${data.joinCode}</span>`;
+            } else if (data.status === 'waiting' && statusEl) {
+                statusEl.innerText = t('waiting_opponent');
             }
 
             const opponentId = amIHost ? data.guestId : data.hostId;
             if (opponentId) {
-                ui.opponentName.innerText = t('opponent_connected'); 
-                ui.opponentStatus.innerText = t('ready');
+                if(opponentName) opponentName.innerText = t('opponent_connected'); 
+                if(opponentStatus) opponentStatus.innerText = t('ready');
                 if(waitingControls) waitingControls.classList.add('hidden');
                 if(activeControls) activeControls.classList.remove('hidden');
             } else {
-                ui.opponentName.innerText = t('waiting_generic');
-                ui.opponentStatus.innerText = "";
+                if(opponentName) opponentName.innerText = t('waiting_generic');
+                if(opponentStatus) opponentStatus.innerText = "";
                 if(activeControls) activeControls.classList.add('hidden');
                 
                 // Show Cancel Button Logic
@@ -607,8 +606,7 @@
                 }
             }
 
-            const myActions = document.getElementById('my-actions');
-            myActions.innerHTML = '';
+            if(myActions) myActions.innerHTML = '';
 
             if (data.status === 'playing') {
                 if (data.lastFlip && data.lastFlip.timestamp > (window.lastProcessedFlip || 0)) {
@@ -617,26 +615,26 @@
                     setTimeout(() => {
                          const winnerId = data.lastFlip.result === 'heads' ? data.hostId : data.guestId;
                          if (winnerId === currentUser.uid) {
-                             ui.status.innerHTML = `<span class="text-green-400 font-bold">${t('you_won')}!</span>`;
+                             if(statusEl) statusEl.innerHTML = `<span class="text-green-400 font-bold">${t('you_won')}!</span>`;
                              showWinnerControls(data);
                          } else {
-                             ui.status.innerHTML = `<span class="text-red-400 font-bold">${t('you_lost')}!</span>`;
+                             if(statusEl) statusEl.innerHTML = `<span class="text-red-400 font-bold">${t('you_lost')}!</span>`;
                          }
                     }, 2000);
                     return;
                 }
 
-                if (!data.lastFlip) {
-                    ui.status.innerText = t('game_start');
+                if (!data.lastFlip && statusEl && myActions) {
+                    statusEl.innerText = t('game_start');
                     if (amIHost) myActions.innerHTML = `<button onclick="performFlip()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg shadow-lg">${t('btn_flip')}</button>`;
                 }
                 
-                if (data.actionRequired === 'accept_double') {
+                if (data.actionRequired === 'accept_double' && statusEl && myActions) {
                      const lastWinner = data.lastFlip.result === 'heads' ? data.hostId : data.guestId;
                      if (lastWinner !== currentUser.uid) {
-                         ui.status.innerHTML = `<span class="text-yellow-400">${t('challenge')}</span> ${t('match_bet')} ${data.betSize}p?`;
+                         statusEl.innerHTML = `<span class="text-yellow-400">${t('challenge')}</span> ${t('match_bet')} ${data.betSize}p?`;
                          myActions.innerHTML = `<div class="grid grid-cols-2 gap-2"><button onclick="respondToDouble(true)" class="bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg">${t('btn_accept')}</button><button onclick="respondToDouble(false)" class="bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-lg">${t('btn_fold')}</button></div>`;
-                     } else ui.status.innerText = t('waiting_generic');
+                     } else statusEl.innerText = t('waiting_generic');
                 } else if (data.lastFlip && !data.actionRequired) {
                      const winnerId = data.lastFlip.result === 'heads' ? data.hostId : data.guestId;
                      if (winnerId === currentUser.uid) showWinnerControls(data);
@@ -673,7 +671,8 @@
         };
 
         function showWinnerControls(roomData) {
-            document.getElementById('my-actions').innerHTML = `<div class="flex flex-col gap-2"><button onclick="proposeDouble()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-lg border-b-4 border-purple-800">${t('btn_double')} (${roomData.currentPot * 2}p)</button><button onclick="takeWinnings()" class="bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg border-b-4 border-green-800">${t('btn_cashout')} ${roomData.currentPot}p</button></div>`;
+            const myActions = document.getElementById('my-actions');
+            if(myActions) myActions.innerHTML = `<div class="flex flex-col gap-2"><button onclick="proposeDouble()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-lg border-b-4 border-purple-800">${t('btn_double')} (${roomData.currentPot * 2}p)</button><button onclick="takeWinnings()" class="bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg border-b-4 border-green-800">${t('btn_cashout')} ${roomData.currentPot}p</button></div>`;
         }
 
         window.proposeDouble = async () => {
@@ -709,14 +708,19 @@
 
         function animateFlip(result) {
             const coin = document.getElementById('coin');
-            coin.style.animation = 'none';
-            coin.offsetHeight;
-            coin.style.animation = result === 'heads' ? "flipHeads 2s forwards" : "flipTails 2s forwards";
+            if(coin) {
+                coin.style.animation = 'none';
+                coin.offsetHeight;
+                coin.style.animation = result === 'heads' ? "flipHeads 2s forwards" : "flipTails 2s forwards";
+            }
         }
 
         function resetGameUI() {
-             document.getElementById('coin').style.animation = 'none';
-             document.getElementById('my-actions').innerHTML = '';
+             const coin = document.getElementById('coin');
+             if(coin) coin.style.animation = 'none';
+             
+             const myActions = document.getElementById('my-actions');
+             if(myActions) myActions.innerHTML = '';
              
              const potDisplay = document.getElementById('pot-display');
              if(potDisplay) potDisplay.innerText = '0';
@@ -729,7 +733,9 @@
         }
 
         async function loadLeaderboard() {
-            ui.leaderboardList.innerHTML = `<div class="text-center p-4">${t('game_status_init')}</div>`;
+            const list = document.getElementById('leaderboard-list');
+            if(!list) return;
+            list.innerHTML = `<div class="text-center p-4">${t('game_status_init')}</div>`;
             const q = query(collection(db, COLLECTION_USERS), orderBy("wins", "desc"), limit(10));
             const snap = await getDocs(q);
             let html = '';
@@ -738,7 +744,7 @@
                 const d = doc.data();
                 html += `<div class="flex justify-between items-center bg-gray-800 p-3 rounded mb-2 border border-gray-700"><div class="flex items-center gap-3"><span class="text-yellow-500 font-bold">#${rank++}</span><span class="font-bold">${d.username}</span></div><div class="text-green-400 font-mono">${d.wins} W</div></div>`;
             });
-            ui.leaderboardList.innerHTML = html || '<div class="text-center text-gray-500">...</div>';
+            list.innerHTML = html || '<div class="text-center text-gray-500">...</div>';
         }
     </script>
 
