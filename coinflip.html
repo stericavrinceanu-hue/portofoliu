@@ -231,7 +231,7 @@
         const BONUS_AMOUNT = 100;
         const BONUS_COOLDOWN = 24 * 60 * 60 * 1000; 
 
-        // !!! FIXED: Added the missing 'views' object !!!
+        // Definire corectă views
         const views = {
             login: document.getElementById('view-login'),
             lobby: document.getElementById('view-lobby'),
@@ -474,17 +474,33 @@
 
             if (forceCreate) { await createRoom(betSize, joinCode); return; }
 
+            // === SIMPLIFIED QUERY TO FIX MATCHMAKING ===
+            // Removed 'joinCode' check to avoid complex index requirements.
+            // We filter in memory instead.
             const q = query(
                 collection(db, COLLECTION_ROOMS), 
                 where('status', '==', 'waiting'), 
                 where('betSize', '==', betSize),
-                where('joinCode', '==', null), 
-                limit(10)
+                limit(20)
             );
-            let snapshot = await getDocs(q);
-            const validRoom = snapshot.docs.find(d => d.data().hostId !== currentUser.uid);
-            if (validRoom) await enterRoom(validRoom.id, betSize);
-            else await createRoom(betSize, null);
+            
+            try {
+                let snapshot = await getDocs(q);
+                
+                // Memory Filter: Not my room AND (public search -> no code | private search -> ignored here)
+                const validRoom = snapshot.docs.find(d => {
+                    const data = d.data();
+                    return data.hostId !== currentUser.uid && !data.joinCode;
+                });
+
+                if (validRoom) await enterRoom(validRoom.id, betSize);
+                else await createRoom(betSize, null);
+                
+            } catch (error) {
+                console.error("Matchmaking error (likely index):", error);
+                // Fallback: If query fails, create a room so the user isn't stuck
+                await createRoom(betSize, null);
+            }
         }
 
         async function createRoom(betSize, joinCode) {
@@ -580,7 +596,11 @@
                 ui.opponentName.innerText = t('waiting_generic');
                 ui.opponentStatus.innerText = "";
                 ui.activeControls.classList.add('hidden');
-                if (amIHost && data.status === 'waiting') ui.waitingControls.classList.remove('hidden');
+                
+                // Show Cancel Button Logic
+                if (amIHost && data.status === 'waiting') {
+                    ui.waitingControls.classList.remove('hidden');
+                }
             }
 
             const myActions = document.getElementById('my-actions');
@@ -847,18 +867,23 @@
             </div>
 
             <div class="flex-1 flex flex-col items-center justify-center p-6 bg-gradient-to-b from-gray-900 to-black relative">
-                <div id="game-status" class="text-xl mb-8 font-bold text-center h-16" data-i18n="game_status_init">Se încarcă...</div>
                 
-                <div id="waiting-controls" class="absolute top-24 hidden">
-                    <button onclick="cancelBet()" class="bg-red-900/50 hover:bg-red-800 text-red-200 border border-red-700 px-4 py-1 rounded text-sm">
-                        <i class="fa-solid fa-xmark mr-1"></i> <span data-i18n="btn_cancel">Anulează & Refund</span>
-                    </button>
+                <!-- Layout control container for buttons -->
+                <div class="w-full max-w-md flex justify-center mb-6 absolute top-20 z-20">
+                    <div id="waiting-controls" class="hidden w-full px-4">
+                        <button onclick="cancelBet()" class="w-full bg-red-900/80 hover:bg-red-800 text-red-200 border border-red-700 px-4 py-3 rounded-lg text-lg font-bold shadow-lg backdrop-blur-sm transition">
+                            <i class="fa-solid fa-xmark mr-2"></i> <span data-i18n="btn_cancel">Anulează & Refund</span>
+                        </button>
+                    </div>
+                    
+                    <div id="active-controls" class="hidden w-full px-4">
+                        <button onclick="leaveGame()" class="w-full bg-red-900/80 hover:bg-red-800 text-red-200 border border-red-700 px-4 py-3 rounded-lg text-lg font-bold shadow-lg backdrop-blur-sm transition">
+                            <i class="fa-solid fa-person-running mr-2"></i> <span data-i18n="btn_leave">Ieși din joc</span>
+                        </button>
+                    </div>
                 </div>
-                <div id="active-controls" class="absolute top-24 hidden">
-                    <button onclick="leaveGame()" class="bg-red-900/50 hover:bg-red-800 text-red-200 border border-red-700 px-4 py-1 rounded text-sm">
-                        <i class="fa-solid fa-person-running mr-1"></i> <span data-i18n="btn_leave">Ieși din joc</span>
-                    </button>
-                </div>
+
+                <div id="game-status" class="text-xl mb-8 font-bold text-center h-16 mt-16" data-i18n="game_status_init">Se încarcă...</div>
 
                 <div class="coin-container mb-12">
                     <div class="coin" id="coin">
