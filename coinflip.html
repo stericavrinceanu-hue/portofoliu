@@ -11,13 +11,13 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, query, where, getDocs, limit, orderBy, increment, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, getDocs, limit, orderBy, increment, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // ==========================================
         // CONFIGURATION SECTION
         // ==========================================
         
-        // Your Firebase configuration (Preserved from previous context)
+        // Your Firebase configuration
         const firebaseConfig = {
             apiKey: "AIzaSyDSQD3YDBkwdrkUyw6xNEvYdLhbWPdEiKo",
             authDomain: "coinflip-172f5.firebaseapp.com",
@@ -32,28 +32,22 @@
         // END CONFIGURATION
         // ==========================================
 
-        // SAFEGUARD: Only attempt to load internal chat config if your keys are missing.
-        // This prevents "ReferenceError: __firebase_config is not defined" on your website.
         if ((!firebaseConfig.apiKey || firebaseConfig.apiKey === "") && typeof __firebase_config !== 'undefined') {
              try { Object.assign(firebaseConfig, JSON.parse(__firebase_config)); } catch(e){}
         }
 
-        // Error Check: Did the user paste their keys?
         if (!firebaseConfig.apiKey) {
             document.getElementById('view-login').innerHTML = `
                 <div class="text-center text-red-500 p-8">
                     <h1 class="text-3xl font-bold mb-4">MISSING CONFIGURATION</h1>
-                    <p class="mb-4">You haven't added your Firebase keys to the code yet.</p>
-                    <p class="text-sm text-gray-400">Open the HTML file and look for the 'firebaseConfig' section.<br>Paste your config object there.</p>
+                    <p>Please configure your Firebase keys in the code.</p>
                 </div>`;
-            throw new Error("Firebase Config is missing. Please edit the HTML file.");
+            throw new Error("Firebase Config is missing.");
         }
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        
-        // Use your project ID as the app identifier or fallback
         const appId = firebaseConfig.projectId || 'coinflip-game';
 
         // --- Global State ---
@@ -61,6 +55,7 @@
         let currentRoomId = null;
         let roomUnsubscribe = null;
         let userUnsubscribe = null;
+        let myActiveRoomsUnsubscribe = null;
 
         // --- Constants ---
         const COLLECTION_USERS = `coinflip_users`;
@@ -83,45 +78,25 @@
             opponentName: document.getElementById('opponent-name'),
             opponentStatus: document.getElementById('opponent-status'),
             potDisplay: document.getElementById('pot-display'),
-            leaderboardList: document.getElementById('leaderboard-list')
+            leaderboardList: document.getElementById('leaderboard-list'),
+            activeGamesList: document.getElementById('active-games-list'),
+            waitingControls: document.getElementById('waiting-controls')
         };
 
         // --- Auth & Init ---
         async function initAuth() {
             try {
                 let signedIn = false;
-
-                // 1. Try Custom Token (Only works in AI Preview Environment)
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     try {
                         await signInWithCustomToken(auth, __initial_auth_token);
                         signedIn = true;
-                    } catch (tokenError) {
-                        console.warn("Environment token mismatch. Falling back to Anonymous Auth.");
-                    }
+                    } catch (tokenError) { console.warn("Token mismatch, using anonymous."); }
                 }
-
-                // 2. Fallback to Anonymous (Works on your Website)
-                if (!signedIn) {
-                    await signInAnonymously(auth);
-                }
-
+                if (!signedIn) await signInAnonymously(auth);
             } catch (error) {
                 console.error("Auth failed", error);
-                
-                let msg = "Connection failed.";
-                if (error.code === 'auth/operation-not-allowed') {
-                    msg = "ERROR: You must enable 'Anonymous Auth' in the Firebase Console (Build > Authentication > Sign-in method).";
-                } else if (error.code === 'auth/api-key-not-valid') {
-                    msg = "ERROR: Your API Key is invalid. Check your config.";
-                }
-
-                document.getElementById('view-login').innerHTML = `
-                <div class="text-center text-red-500 p-8">
-                    <h2 class="text-2xl font-bold mb-2">Authentication Error</h2>
-                    <p>${msg}</p>
-                    <p class="text-xs mt-4 text-gray-500">${error.message}</p>
-                </div>`;
+                document.getElementById('view-login').innerHTML = `<div class="text-red-500 p-8">Auth Error: ${error.message}</div>`;
             }
         }
 
@@ -130,22 +105,27 @@
                 currentUser = user;
                 await ensureUserProfile();
                 setupUserListener();
+                setupActiveGamesListener(); // Listen for "On Hold" games
                 switchView('lobby');
             }
         });
 
         async function ensureUserProfile() {
-            const userRef = doc(db, COLLECTION_USERS, currentUser.uid);
-            const snap = await getDoc(userRef);
-            if (!snap.exists()) {
-                // New user bonus
-                await setDoc(userRef, {
-                    username: `Player ${currentUser.uid.slice(0, 4)}`,
-                    balance: 1000,
-                    wins: 0,
-                    maxStreak: 0,
-                    createdAt: Date.now()
-                });
+            try {
+                const userRef = doc(db, COLLECTION_USERS, currentUser.uid);
+                const snap = await getDoc(userRef);
+                if (!snap.exists()) {
+                    await setDoc(userRef, {
+                        username: `Player ${currentUser.uid.slice(0, 4)}`,
+                        balance: 1000,
+                        wins: 0,
+                        createdAt: Date.now()
+                    });
+                }
+            } catch (e) {
+                if (e.code === 'permission-denied') {
+                    alert("Database permission denied. Please update Firestore Rules.");
+                }
             }
         }
 
@@ -157,35 +137,119 @@
                     ui.balance.forEach(el => el.innerText = data.balance);
                     ui.username.forEach(el => el.innerText = data.username);
                 }
-            }, (error) => console.error("User sync error:", error));
+            });
         }
+
+        // --- Rejoin / Active Games Logic ---
+        function setupActiveGamesListener() {
+            if (myActiveRoomsUnsubscribe) myActiveRoomsUnsubscribe();
+            
+            // Query rooms where I am Host OR Guest, and status is NOT finished
+            // Note: Firestore OR queries are tricky. We'll listen to "hostId == me" for now for the "My Bets" feature.
+            const q = query(
+                collection(db, COLLECTION_ROOMS), 
+                where('hostId', '==', currentUser.uid),
+                where('status', 'in', ['waiting', 'playing'])
+            );
+
+            myActiveRoomsUnsubscribe = onSnapshot(q, (snapshot) => {
+                const list = ui.activeGamesList;
+                list.innerHTML = '';
+                
+                if (snapshot.empty) {
+                    list.innerHTML = '<div class="text-gray-500 text-sm italic">No active bets.</div>';
+                    return;
+                }
+
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const isWaiting = data.status === 'waiting';
+                    const badgeColor = isWaiting ? 'bg-yellow-600' : 'bg-green-600';
+                    const badgeText = isWaiting ? 'WAITING' : 'PLAYING';
+                    
+                    const el = document.createElement('div');
+                    el.className = 'bg-gray-800 border border-gray-700 p-3 rounded flex justify-between items-center mb-2';
+                    el.innerHTML = `
+                        <div>
+                            <span class="text-xs font-bold px-2 py-1 rounded ${badgeColor} text-white mr-2">${badgeText}</span>
+                            <span class="font-bold text-white">$${data.betSize} Bet</span>
+                            ${data.joinCode ? `<span class="ml-2 text-xs text-blue-400"><i class="fa-solid fa-key"></i> ${data.joinCode}</span>` : ''}
+                        </div>
+                        <button onclick="rejoinRoom('${doc.id}')" class="text-sm bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-white">
+                            ${isWaiting ? 'Manage' : 'Rejoin'}
+                        </button>
+                    `;
+                    list.appendChild(el);
+                });
+            });
+        }
+
+        window.rejoinRoom = (roomId) => {
+            currentRoomId = roomId;
+            switchView('game');
+            subscribeToRoom(roomId);
+        };
 
         // --- Navigation ---
         window.switchView = (viewName) => {
             Object.values(views).forEach(el => el.classList.add('hidden'));
             if(views[viewName]) views[viewName].classList.remove('hidden');
-            
             if (viewName === 'leaderboard') loadLeaderboard();
         };
 
         // --- Lobby Logic ---
-        window.createCustomRoom = async () => {
-             const betSizeInput = document.getElementById('custom-bet-size');
-             const betSize = parseInt(betSizeInput.value);
-             
-             if (!betSize || betSize <= 0) {
-                 alert("Please enter a valid bet amount.");
-                 return;
-             }
-             
-             await joinMatch(betSize, true); // Force create
-        };
-
+        
+        // 1. Quick Match (Public)
         window.findMatch = async (betSize) => {
-            await joinMatch(betSize, false);
+            await joinMatch(betSize, null);
         };
 
-        async function joinMatch(betSize, forceCreate) {
+        // 2. Create Private Room (With Code)
+        window.createPrivateRoom = async () => {
+             const betSize = parseInt(document.getElementById('custom-bet-size').value);
+             const code = document.getElementById('custom-room-code').value.trim();
+             
+             if (!betSize || betSize <= 0) return alert("Invalid amount.");
+             
+             // If code is empty, it's just a custom public room
+             await joinMatch(betSize, true, code || null);
+        };
+
+        // 3. Join Private Room (Via Code)
+        window.joinByCode = async () => {
+            const code = document.getElementById('join-room-code').value.trim();
+            if (!code) return alert("Enter a code.");
+
+            ui.status.innerHTML = '<span class="animate-pulse">Searching for room...</span>';
+            
+            // Find room with this code
+            const q = query(
+                collection(db, COLLECTION_ROOMS), 
+                where('joinCode', '==', code),
+                where('status', '==', 'waiting'),
+                limit(1)
+            );
+
+            const snapshot = await getDocs(q);
+            if (snapshot.empty) {
+                alert("Room not found or already started.");
+                return;
+            }
+            
+            const roomDoc = snapshot.docs[0];
+            const roomData = roomDoc.data();
+            
+            if (roomData.hostId === currentUser.uid) {
+                // I am the host re-joining
+                rejoinRoom(roomDoc.id);
+            } else {
+                // I am joining
+                // Check balance logic here again just in case
+                await enterRoom(roomDoc.id, roomData.betSize);
+            }
+        };
+
+        async function joinMatch(betSize, forceCreate, joinCode = null) {
             // Check balance
             const userDoc = await getDoc(doc(db, COLLECTION_USERS, currentUser.uid));
             if (userDoc.data().balance < betSize) {
@@ -195,45 +259,34 @@
 
             switchView('game');
             resetGameUI();
-            ui.status.innerHTML = '<span class="animate-pulse">Searching for opponent...</span>';
+            ui.status.innerHTML = '<span class="animate-pulse">Searching...</span>';
 
             if (forceCreate) {
-                await createRoom(betSize);
+                await createRoom(betSize, joinCode);
                 return;
             }
 
-            // Look for open room
-            // Note: Firestore requires an index for complex queries. 
-            // If this fails in console, click the link in the error to build the index.
+            // Public matchmaking only finds rooms WITHOUT a code
             const q = query(
                 collection(db, COLLECTION_ROOMS), 
                 where('status', '==', 'waiting'), 
                 where('betSize', '==', betSize),
-                limit(10) // Fetch a few to filter client-side if needed
+                where('joinCode', '==', null), 
+                limit(10)
             );
             
-            let snapshot;
-            try {
-                snapshot = await getDocs(q);
-            } catch(e) {
-                console.error("Query Error (likely needs index):", e);
-                // Fallback: Create room if query fails
-                await createRoom(betSize);
-                return;
-            }
-            
-            // Filter out my own rooms
+            let snapshot = await getDocs(q);
             const validRoom = snapshot.docs.find(d => d.data().hostId !== currentUser.uid);
 
             if (validRoom) {
                 await enterRoom(validRoom.id, betSize);
             } else {
-                await createRoom(betSize);
+                await createRoom(betSize, null);
             }
         }
 
-        async function createRoom(betSize) {
-            // Deduct initial bet
+        async function createRoom(betSize, joinCode) {
+            // Deduct bet
             await updateDoc(doc(db, COLLECTION_USERS, currentUser.uid), {
                 balance: increment(-betSize)
             });
@@ -245,31 +298,28 @@
                 hostId: currentUser.uid,
                 guestId: null,
                 betSize: betSize,
-                currentPot: betSize, // Only host's money so far
+                currentPot: betSize,
                 status: 'waiting',
                 turn: 'host',
                 createdAt: Date.now(),
                 lastFlip: null,
-                actionRequired: null
+                actionRequired: null,
+                joinCode: joinCode // Save the code (or null)
             });
 
-            ui.status.innerText = "Waiting for player... Room ID: " + currentRoomId.slice(0, 4);
             subscribeToRoom(currentRoomId);
         }
 
         async function enterRoom(roomId, betSize) {
-            // Deduct bet
             await updateDoc(doc(db, COLLECTION_USERS, currentUser.uid), {
                 balance: increment(-betSize)
             });
 
             const roomRef = doc(db, COLLECTION_ROOMS, roomId);
-            
-            // Update room to playing
             await updateDoc(roomRef, {
                 guestId: currentUser.uid,
                 status: 'playing',
-                currentPot: increment(betSize) // Add guest money
+                currentPot: increment(betSize)
             });
             
             currentRoomId = roomId;
@@ -282,79 +332,81 @@
             
             roomUnsubscribe = onSnapshot(doc(db, COLLECTION_ROOMS, roomId), async (snapshot) => {
                 if (!snapshot.exists()) {
-                    alert("Room closed.");
-                    switchView('lobby');
+                    // Room deleted (cancelled)
+                    if (document.getElementById('view-game').classList.contains('hidden') === false) {
+                        alert("Room closed or cancelled.");
+                        switchView('lobby');
+                    }
                     return;
                 }
 
                 const data = snapshot.data();
                 renderGameState(data);
 
-            }, (error) => console.error("Room sync error", error));
+            }, (error) => console.error("Sync error", error));
         }
 
         function renderGameState(data) {
             ui.potDisplay.innerText = data.currentPot;
             const amIHost = data.hostId === currentUser.uid;
-            const opponentId = amIHost ? data.guestId : data.hostId;
-
-            // Opponent Display
-            if (!opponentId) {
-                ui.opponentName.innerText = "Waiting...";
-                ui.opponentStatus.innerText = "";
-            } else {
-                // In a real app we'd fetch opponent name, for now just generic
-                ui.opponentName.innerText = "Opponent Connected"; 
-                ui.opponentStatus.innerText = "Ready";
+            
+            // Show Code if waiting
+            if (data.status === 'waiting' && data.joinCode) {
+                ui.status.innerHTML = `Room Code: <span class="text-yellow-400 font-mono text-2xl tracking-widest">${data.joinCode}</span><br><span class="text-xs text-gray-400">Share this code</span>`;
+            } else if (data.status === 'waiting') {
+                ui.status.innerText = "Waiting for challenger...";
             }
 
-            // Game Phases
-            const myActions = document.getElementById('my-actions');
-            myActions.innerHTML = ''; // Clear buttons
+            // Opponent Status
+            const opponentId = amIHost ? data.guestId : data.hostId;
+            if (opponentId) {
+                ui.opponentName.innerText = "Player Connected"; 
+                ui.opponentStatus.innerText = "Ready";
+                ui.waitingControls.classList.add('hidden'); // Hide Cancel button
+            } else {
+                ui.opponentName.innerText = "Waiting...";
+                ui.opponentStatus.innerText = "";
+                // Show Cancel Button only for Host when Waiting
+                if (amIHost && data.status === 'waiting') {
+                    ui.waitingControls.classList.remove('hidden');
+                }
+            }
 
-            if (data.status === 'waiting') {
-                ui.status.innerText = "Waiting for challenger...";
-            } 
-            else if (data.status === 'playing') {
+            // Game Play
+            const myActions = document.getElementById('my-actions');
+            myActions.innerHTML = '';
+
+            if (data.status === 'playing') {
                 
-                // Handle Flips
+                // Animation Logic
                 if (data.lastFlip && data.lastFlip.timestamp > (window.lastProcessedFlip || 0)) {
                     window.lastProcessedFlip = data.lastFlip.timestamp;
                     animateFlip(data.lastFlip.result);
-                    
                     setTimeout(() => {
                          const winnerId = data.lastFlip.result === 'heads' ? data.hostId : data.guestId;
-                         const isMe = winnerId === currentUser.uid;
-                         
-                         if (isMe) {
+                         if (winnerId === currentUser.uid) {
                              ui.status.innerHTML = `<span class="text-green-400 font-bold">YOU WON!</span>`;
                              showWinnerControls(data);
                          } else {
-                             ui.status.innerHTML = `<span class="text-red-400 font-bold">YOU LOST!</span> Waiting for winner...`;
+                             ui.status.innerHTML = `<span class="text-red-400 font-bold">YOU LOST!</span> Waiting...`;
                          }
                     }, 2000);
-                    return; // Stop rendering while animating
+                    return;
                 }
 
-                // Initial State or Post-Animation Idle
+                // Initial Flip Button
                 if (!data.lastFlip) {
                     ui.status.innerText = "Game On! Host flipping...";
                     if (amIHost) {
-                        myActions.innerHTML = `<button onclick="performFlip()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg shadow-lg transform hover:scale-105 transition">FLIP COIN</button>`;
-                    } else {
-                        ui.status.innerText = "Opponent is flipping...";
+                        myActions.innerHTML = `<button onclick="performFlip()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg shadow-lg">FLIP COIN</button>`;
                     }
                 }
                 
-                // Double Up Logic (After a flip)
+                // Double Up Response
                 if (data.actionRequired === 'accept_double') {
-                     // Check if I am the one who needs to accept
                      const lastWinner = data.lastFlip.result === 'heads' ? data.hostId : data.guestId;
-                     const isWinner = lastWinner === currentUser.uid;
-
-                     if (!isWinner) {
-                         // I am the loser, being challenged
-                         ui.status.innerHTML = `<span class="text-yellow-400">CHALLENGE!</span> Bet $${data.betSize} to win $${data.currentPot + data.betSize}?`;
+                     if (lastWinner !== currentUser.uid) {
+                         ui.status.innerHTML = `<span class="text-yellow-400">CHALLENGE!</span> Match $${data.betSize}?`;
                          myActions.innerHTML = `
                             <div class="grid grid-cols-2 gap-2">
                                 <button onclick="respondToDouble(true)" class="bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg">ACCEPT</button>
@@ -362,28 +414,47 @@
                             </div>
                          `;
                      } else {
-                         ui.status.innerText = "Waiting for opponent to accept double...";
+                         ui.status.innerText = "Waiting for response...";
                      }
                 } else if (data.lastFlip && !data.actionRequired) {
-                    // Winner hasn't decided yet
                      const winnerId = data.lastFlip.result === 'heads' ? data.hostId : data.guestId;
-                     if (winnerId === currentUser.uid) {
-                        showWinnerControls(data);
-                     }
+                     if (winnerId === currentUser.uid) showWinnerControls(data);
                 }
             }
         }
 
-        // --- Actions ---
+        // --- Cancel Logic ---
+        window.cancelBet = async () => {
+            if (!confirm("Cancel bet and refund money?")) return;
+            
+            const roomRef = doc(db, COLLECTION_ROOMS, currentRoomId);
+            const roomSnap = await getDoc(roomRef);
+            
+            if (!roomSnap.exists()) return;
+            const data = roomSnap.data();
 
+            if (data.status !== 'waiting') {
+                alert("Cannot cancel, game already started!");
+                return;
+            }
+
+            // Refund
+            await updateDoc(doc(db, COLLECTION_USERS, currentUser.uid), {
+                balance: increment(data.currentPot) // Refund the pot (which is just my bet)
+            });
+
+            // Delete Room
+            await deleteDoc(roomRef);
+            
+            alert("Bet cancelled and refunded.");
+            switchView('lobby');
+        };
+
+        // --- Game Actions ---
         window.performFlip = async () => {
             const result = Math.random() < 0.5 ? 'heads' : 'tails';
-            
             await updateDoc(doc(db, COLLECTION_ROOMS, currentRoomId), {
-                lastFlip: {
-                    result: result,
-                    timestamp: Date.now()
-                }
+                lastFlip: { result, timestamp: Date.now() }
             });
         };
 
@@ -391,43 +462,29 @@
             const myActions = document.getElementById('my-actions');
             myActions.innerHTML = `
                 <div class="flex flex-col gap-2">
-                    <button onclick="proposeDouble()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-lg shadow-lg border-b-4 border-purple-800">
-                        DOUBLE OR NOTHING ($${roomData.currentPot * 2})
-                    </button>
-                    <button onclick="takeWinnings()" class="bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg shadow-lg border-b-4 border-green-800">
-                        CASH OUT $${roomData.currentPot}
-                    </button>
-                </div>
-            `;
+                    <button onclick="proposeDouble()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-lg border-b-4 border-purple-800">DOUBLE UP ($${roomData.currentPot * 2})</button>
+                    <button onclick="takeWinnings()" class="bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg border-b-4 border-green-800">CASH OUT $${roomData.currentPot}</button>
+                </div>`;
         }
 
         window.proposeDouble = async () => {
              const roomRef = doc(db, COLLECTION_ROOMS, currentRoomId);
              const roomSnap = await getDoc(roomRef);
-             const data = roomSnap.data();
-             
-             // Update Room
              await updateDoc(roomRef, {
                  actionRequired: 'accept_double',
-                 betSize: data.currentPot // The amount the loser has to pay to play
+                 betSize: roomSnap.data().currentPot 
              });
         };
         
         window.takeWinnings = async () => {
              const roomRef = doc(db, COLLECTION_ROOMS, currentRoomId);
              const roomSnap = await getDoc(roomRef);
-             const data = roomSnap.data();
-             
-             // Pay the winner
              await updateDoc(doc(db, COLLECTION_USERS, currentUser.uid), {
-                 balance: increment(data.currentPot),
+                 balance: increment(roomSnap.data().currentPot),
                  wins: increment(1)
              });
-             
-             // Close room
-             await updateDoc(roomRef, { status: 'finished' });
-             
-             alert(`You won $${data.currentPot}!`);
+             await updateDoc(roomRef, { status: 'finished' }); // Mark finished instead of deleting so other player sees result
+             alert(`You won $${roomSnap.data().currentPot}!`);
              switchView('lobby');
         };
 
@@ -437,37 +494,24 @@
             const data = roomSnap.data();
             
             if (!accepted) {
-                // Fold. Opponent (Winner of prev round) takes the pot.
                 const prevWinnerId = data.lastFlip.result === 'heads' ? data.hostId : data.guestId;
-                
                 await updateDoc(doc(db, COLLECTION_USERS, prevWinnerId), {
                     balance: increment(data.currentPot),
                     wins: increment(1)
                 });
-                
                 await updateDoc(roomRef, { status: 'finished' });
-                alert("You folded. Opponent took the pot.");
+                alert("You folded.");
                 switchView('lobby');
             } else {
-                // Accept. Deduct money from me.
                 const cost = data.betSize;
-                
-                // Check funds
                 const myUser = await getDoc(doc(db, COLLECTION_USERS, currentUser.uid));
-                if (myUser.data().balance < cost) {
-                    alert("Not enough funds to double!");
-                    return; 
-                }
+                if (myUser.data().balance < cost) return alert("Not enough funds!");
                 
-                await updateDoc(doc(db, COLLECTION_USERS, currentUser.uid), {
-                    balance: increment(-cost)
-                });
-                
-                // Update Room
+                await updateDoc(doc(db, COLLECTION_USERS, currentUser.uid), { balance: increment(-cost) });
                 await updateDoc(roomRef, {
                     currentPot: increment(cost),
                     actionRequired: null,
-                    lastFlip: null // Triggers new round UI
+                    lastFlip: null
                 });
             }
         };
@@ -476,28 +520,21 @@
         function animateFlip(result) {
             const coin = document.getElementById('coin');
             coin.style.animation = 'none';
-            coin.offsetHeight; /* reflow */
-            
-            if (result === 'heads') {
-                coin.style.animation = "flipHeads 2s forwards";
-            } else {
-                coin.style.animation = "flipTails 2s forwards";
-            }
+            coin.offsetHeight;
+            coin.style.animation = result === 'heads' ? "flipHeads 2s forwards" : "flipTails 2s forwards";
         }
 
         function resetGameUI() {
              document.getElementById('coin').style.animation = 'none';
              document.getElementById('my-actions').innerHTML = '';
              ui.potDisplay.innerText = '0';
+             ui.waitingControls.classList.add('hidden');
         }
 
-        // --- Leaderboard ---
         async function loadLeaderboard() {
             ui.leaderboardList.innerHTML = '<div class="text-center p-4">Loading...</div>';
-            
             const q = query(collection(db, COLLECTION_USERS), orderBy("wins", "desc"), limit(10));
             const snap = await getDocs(q);
-            
             let html = '';
             let rank = 1;
             snap.forEach(doc => {
@@ -505,157 +542,118 @@
                 html += `
                     <div class="flex justify-between items-center bg-gray-800 p-3 rounded mb-2 border border-gray-700">
                         <div class="flex items-center gap-3">
-                            <span class="text-yellow-500 font-bold text-xl">#${rank++}</span>
+                            <span class="text-yellow-500 font-bold">#${rank++}</span>
                             <span class="font-bold">${d.username}</span>
                         </div>
                         <div class="text-green-400 font-mono">${d.wins} Wins</div>
-                    </div>
-                `;
+                    </div>`;
             });
-            
             ui.leaderboardList.innerHTML = html || '<div class="text-center text-gray-500">No players yet.</div>';
         }
 
-        // --- Bootstrap ---
         initAuth();
-
     </script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Righteous&family=Roboto:wght@400;700&display=swap');
-        
-        body {
-            font-family: 'Roboto', sans-serif;
-            background-color: #0f172a;
-            color: white;
-        }
-
+        body { font-family: 'Roboto', sans-serif; background-color: #0f172a; color: white; }
         .title-font { font-family: 'Righteous', cursive; }
-
         /* 3D Coin */
         .coin-container { perspective: 1000px; width: 120px; height: 120px; margin: 0 auto; }
         .coin { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; transition: transform 0.5s; }
-        .coin-face {
-            position: absolute; width: 100%; height: 100%; border-radius: 50%;
-            backface-visibility: hidden; display: flex; align-items: center; justify-content: center;
-            border: 4px solid #d4af37; box-shadow: 0 0 15px rgba(255,215,0,0.3);
-        }
+        .coin-face { position: absolute; width: 100%; height: 100%; border-radius: 50%; backface-visibility: hidden; display: flex; align-items: center; justify-content: center; border: 4px solid #d4af37; box-shadow: 0 0 15px rgba(255,215,0,0.3); }
         .heads { background: radial-gradient(circle at 30% 30%, #ffd700, #b8860b); transform: rotateY(0deg); }
         .tails { background: radial-gradient(circle at 30% 30%, #c0c0c0, #808080); transform: rotateY(180deg); }
-        
         @keyframes flipHeads { 0% { transform: rotateY(0); } 100% { transform: rotateY(1800deg); } }
         @keyframes flipTails { 0% { transform: rotateY(0); } 100% { transform: rotateY(1980deg); } }
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
-    <!-- Top Navigation -->
     <nav class="bg-gray-900 border-b border-gray-800 p-4 flex justify-between items-center z-10">
-        <div class="flex items-center gap-2" onclick="switchView('lobby')">
+        <div class="flex items-center gap-2 cursor-pointer" onclick="switchView('lobby')">
             <i class="fa-solid fa-coins text-yellow-500 text-2xl"></i>
             <span class="title-font text-xl tracking-wider hidden sm:block">COINFLIP PVP</span>
         </div>
-        
         <div class="flex gap-4">
-            <button onclick="switchView('lobby')" class="hover:text-yellow-400 transition"><i class="fa-solid fa-gamepad"></i> Lobby</button>
-            <button onclick="switchView('leaderboard')" class="hover:text-yellow-400 transition"><i class="fa-solid fa-trophy"></i> Ranks</button>
+            <button onclick="switchView('lobby')" class="hover:text-yellow-400"><i class="fa-solid fa-gamepad"></i> Lobby</button>
+            <button onclick="switchView('leaderboard')" class="hover:text-yellow-400"><i class="fa-solid fa-trophy"></i> Ranks</button>
         </div>
-
         <div class="bg-gray-800 px-3 py-1 rounded-full flex items-center gap-2 border border-gray-700">
             <i class="fa-solid fa-wallet text-green-400"></i>
             <span class="font-mono font-bold ui-balance">...</span>
         </div>
     </nav>
 
-    <!-- Main Content Area -->
     <main class="flex-1 relative overflow-y-auto">
 
-        <!-- Login / Loading View -->
+        <!-- Login -->
         <div id="view-login" class="absolute inset-0 flex items-center justify-center bg-gray-900 z-50">
-            <div class="text-center animate-pulse">
-                <i class="fa-solid fa-circle-notch fa-spin text-4xl text-yellow-500 mb-4"></i>
-                <h2 class="text-xl">Connecting to Server...</h2>
-            </div>
+            <div class="text-center animate-pulse"><i class="fa-solid fa-circle-notch fa-spin text-4xl text-yellow-500 mb-4"></i><h2 class="text-xl">Connecting...</h2></div>
         </div>
 
-        <!-- Lobby View -->
+        <!-- Lobby -->
         <div id="view-lobby" class="p-6 max-w-2xl mx-auto hidden">
-            <div class="text-center mb-8">
-                <h1 class="text-3xl title-font text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500 mb-2">PICK YOUR STAKES</h1>
-                <p class="text-gray-400">Double or Nothing against real players.</p>
+            
+            <!-- My Active Games (On Hold) -->
+            <div class="mb-8">
+                <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-2">My Active Bets</h3>
+                <div id="active-games-list" class="space-y-2">
+                    <!-- Populated by JS -->
+                </div>
             </div>
 
-            <!-- Profile Snippet -->
+            <!-- Profile -->
             <div class="bg-gray-800 p-4 rounded-xl mb-8 flex justify-between items-center border border-gray-700">
-                <div>
-                    <div class="text-xs text-gray-500">PLAYING AS</div>
-                    <div class="font-bold text-lg ui-username">Guest</div>
-                </div>
-                <div class="text-right">
-                    <div class="text-xs text-gray-500">BALANCE</div>
-                    <div class="font-bold text-2xl text-green-400">$<span class="ui-balance">0</span></div>
-                </div>
+                <div><div class="text-xs text-gray-500">PLAYING AS</div><div class="font-bold text-lg ui-username">Guest</div></div>
+                <div class="text-right"><div class="text-xs text-gray-500">BALANCE</div><div class="font-bold text-2xl text-green-400">$<span class="ui-balance">0</span></div></div>
             </div>
 
-            <!-- Quick Match Grid -->
-            <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4">Quick Match</h3>
-            <div class="grid grid-cols-2 gap-4 mb-8">
-                <button onclick="findMatch(10)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-6 rounded-xl transition group">
-                    <div class="text-gray-400 text-sm mb-1">Entry</div>
-                    <div class="text-2xl font-bold text-white group-hover:text-yellow-400">$10</div>
-                </button>
-                <button onclick="findMatch(50)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-6 rounded-xl transition group">
-                    <div class="text-gray-400 text-sm mb-1">Entry</div>
-                    <div class="text-2xl font-bold text-white group-hover:text-yellow-400">$50</div>
-                </button>
-                <button onclick="findMatch(100)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-6 rounded-xl transition group">
-                    <div class="text-gray-400 text-sm mb-1">Entry</div>
-                    <div class="text-2xl font-bold text-white group-hover:text-yellow-400">$100</div>
-                </button>
-                <button onclick="findMatch(500)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-purple-500 p-6 rounded-xl transition group">
-                    <div class="text-purple-400 text-sm mb-1">HIGH ROLLER</div>
-                    <div class="text-2xl font-bold text-white group-hover:text-purple-400">$500</div>
-                </button>
-            </div>
-
-            <!-- Custom Room -->
-            <div class="bg-gray-900 p-4 rounded-xl border border-gray-800">
-                <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4">Create Custom Room</h3>
+            <!-- Join Custom Code -->
+            <div class="bg-gray-800 p-4 rounded-xl border border-gray-700 mb-8">
+                <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-3">Join Private Room</h3>
                 <div class="flex gap-2">
-                    <input type="number" id="custom-bet-size" placeholder="Bet Amount" class="bg-gray-800 text-white px-4 py-2 rounded-lg flex-1 border border-gray-700 focus:border-yellow-500 outline-none">
-                    <button onclick="createCustomRoom()" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg font-bold">CREATE</button>
+                    <input type="text" id="join-room-code" placeholder="Enter Room Code" class="bg-gray-900 text-white px-4 py-2 rounded-lg flex-1 border border-gray-600 focus:border-yellow-500 outline-none">
+                    <button onclick="joinByCode()" class="bg-green-600 hover:bg-green-500 text-white px-6 py-2 rounded-lg font-bold">JOIN</button>
                 </div>
+            </div>
+
+            <!-- Quick Match -->
+            <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4">Quick Match (Public)</h3>
+            <div class="grid grid-cols-4 gap-2 mb-8">
+                <button onclick="findMatch(10)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-4 rounded-xl font-bold">$10</button>
+                <button onclick="findMatch(50)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-4 rounded-xl font-bold">$50</button>
+                <button onclick="findMatch(100)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-4 rounded-xl font-bold">$100</button>
+                <button onclick="findMatch(500)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-4 rounded-xl font-bold">$500</button>
+            </div>
+
+            <!-- Create Custom Room -->
+            <div class="bg-gray-900 p-4 rounded-xl border border-gray-800">
+                <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4">Create Custom/Private Room</h3>
+                <div class="flex gap-2 mb-2">
+                    <input type="number" id="custom-bet-size" placeholder="Amount ($)" class="bg-gray-800 text-white px-4 py-2 rounded-lg w-1/3 border border-gray-700 outline-none">
+                    <input type="text" id="custom-room-code" placeholder="Secret Code (Optional)" class="bg-gray-800 text-white px-4 py-2 rounded-lg flex-1 border border-gray-700 outline-none">
+                </div>
+                <button onclick="createPrivateRoom()" class="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg font-bold">CREATE ROOM</button>
+                <p class="text-xs text-gray-500 mt-2 text-center">Leave code empty for a public custom bet.</p>
             </div>
         </div>
 
         <!-- Game View -->
         <div id="view-game" class="h-full flex flex-col hidden relative">
-            <!-- HUD -->
             <div class="bg-gray-800 p-4 flex justify-between items-center shadow-lg z-10">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center font-bold">ME</div>
-                    <div>
-                        <div class="text-sm font-bold ui-username">Me</div>
-                        <div class="text-xs text-green-400">$<span class="ui-balance">0</span></div>
-                    </div>
-                </div>
-                <div class="text-center">
-                    <div class="text-xs text-gray-500 uppercase">Current Pot</div>
-                    <div class="text-2xl font-bold text-yellow-400">$<span id="pot-display">0</span></div>
-                </div>
-                <div class="flex items-center gap-3 text-right">
-                    <div>
-                        <div class="text-sm font-bold" id="opponent-name">Waiting...</div>
-                        <div class="text-xs text-gray-400" id="opponent-status">...</div>
-                    </div>
-                    <div class="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center font-bold"><i class="fa-solid fa-user"></i></div>
-                </div>
+                <div class="flex items-center gap-3"><div class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center font-bold">ME</div><div><div class="text-sm font-bold ui-username">Me</div><div class="text-xs text-green-400">$<span class="ui-balance">0</span></div></div></div>
+                <div class="text-center"><div class="text-xs text-gray-500 uppercase">Pot</div><div class="text-2xl font-bold text-yellow-400">$<span id="pot-display">0</span></div></div>
+                <div class="flex items-center gap-3 text-right"><div><div class="text-sm font-bold" id="opponent-name">Waiting...</div><div class="text-xs text-gray-400" id="opponent-status">...</div></div><div class="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center font-bold"><i class="fa-solid fa-user"></i></div></div>
             </div>
 
-            <!-- Arena -->
             <div class="flex-1 flex flex-col items-center justify-center p-6 bg-gradient-to-b from-gray-900 to-black relative">
+                <div id="game-status" class="text-xl mb-8 font-bold text-center h-16">Initializing...</div>
                 
-                <div id="game-status" class="text-xl mb-8 font-bold text-center h-8">Initializing...</div>
+                <!-- Waiting Controls (Cancel) -->
+                <div id="waiting-controls" class="absolute top-24 hidden">
+                    <button onclick="cancelBet()" class="bg-red-900/50 hover:bg-red-800 text-red-200 border border-red-700 px-4 py-1 rounded text-sm"><i class="fa-solid fa-xmark mr-1"></i> Cancel Bet & Refund</button>
+                </div>
 
                 <div class="coin-container mb-12">
                     <div class="coin" id="coin">
@@ -663,22 +661,13 @@
                         <div class="coin-face tails"><i class="fa-solid fa-skull text-4xl text-white"></i></div>
                     </div>
                 </div>
-
-                <!-- Action Bar -->
-                <div id="game-actions" class="w-full max-w-md">
-                    <div id="my-actions" class="flex flex-col gap-2">
-                        <!-- Buttons injected by JS -->
-                    </div>
-                </div>
+                <div id="game-actions" class="w-full max-w-md"><div id="my-actions" class="flex flex-col gap-2"></div></div>
             </div>
         </div>
 
-        <!-- Leaderboard View -->
         <div id="view-leaderboard" class="p-6 max-w-2xl mx-auto hidden">
             <h2 class="text-2xl font-bold mb-6 text-yellow-500"><i class="fa-solid fa-crown mr-2"></i>Global Rankings</h2>
-            <div id="leaderboard-list">
-                <!-- Injected by JS -->
-            </div>
+            <div id="leaderboard-list"></div>
         </div>
 
     </main>
