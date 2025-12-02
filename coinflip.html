@@ -13,11 +13,62 @@
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, query, where, getDocs, limit, orderBy, increment, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- Configuration ---
-        const firebaseConfig = JSON.parse(__firebase_config);
+        // ==========================================
+        // CONFIGURATION SECTION
+        // ==========================================
+        
+        // TODO: Replace the object below with your OWN keys from the Firebase Console
+        // 1. Go to https://console.firebase.google.com/
+        // 2. Click "Add Project" -> Name it "Coinflip"
+        // 3. Click the Web Icon (</>) -> Register app
+        // 4. Copy the "firebaseConfig" object and paste it below:
+        
+        // Import the functions you need from the SDKs you need
+        import { initializeApp } from "firebase/app";
+        import { getAnalytics } from "firebase/analytics";
+        // TODO: Add SDKs for Firebase products that you want to use
+        // https://firebase.google.com/docs/web/setup#available-libraries
+
+        // Your web app's Firebase configuration
+        // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+        const firebaseConfig = {
+        apiKey: "AIzaSyDSQD3YDBkwdrkUyw6xNEvYdLhbWPdEiKo",
+        authDomain: "coinflip-172f5.firebaseapp.com",
+        projectId: "coinflip-172f5",
+        storageBucket: "coinflip-172f5.firebasestorage.app",
+        messagingSenderId: "564936884544",
+        appId: "1:564936884544:web:6dc81d08e9b1c5b67c7aa5",
+        measurementId: "G-03GWNJGV4M"
+        };
+
+        // Initialize Firebase
+        //const app = initializeApp(firebaseConfig);
+        
+
+        // ==========================================
+        // END CONFIGURATION
+        // ==========================================
+
+        // (Auto-fix for AI Preview: uses internal keys if you are testing inside the chat)
+        if (Object.keys(firebaseConfig).length === 0 && typeof __firebase_config !== 'undefined') {
+             try { Object.assign(firebaseConfig, JSON.parse(__firebase_config)); } catch(e){}
+        }
+
+        // Error Check: Did the user paste their keys?
+        if (!firebaseConfig.apiKey) {
+            document.getElementById('view-login').innerHTML = `
+                <div class="text-center text-red-500 p-8">
+                    <h1 class="text-3xl font-bold mb-4">MISSING CONFIGURATION</h1>
+                    <p class="mb-4">You haven't added your Firebase keys to the code yet.</p>
+                    <p class="text-sm text-gray-400">Open the HTML file and look for lines 18-28.<br>Paste your config object there.</p>
+                </div>`;
+            throw new Error("Firebase Config is missing. Please edit the HTML file.");
+        }
+
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
+        const analytics = getAnalytics(app);
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app';
 
         // --- Global State ---
@@ -27,8 +78,9 @@
         let userUnsubscribe = null;
 
         // --- Constants ---
-        const COLLECTION_USERS = `artifacts/${appId}/public/data/users`;
-        const COLLECTION_ROOMS = `artifacts/${appId}/public/data/rooms`; // Public rooms for matchmaking
+        // Using a generic path for personal use
+        const COLLECTION_USERS = `coinflip_users`;
+        const COLLECTION_ROOMS = `coinflip_rooms`; 
 
         // --- DOM Elements ---
         const views = {
@@ -53,14 +105,29 @@
         // --- Auth & Init ---
         async function initAuth() {
             try {
+                // Check if we are in the AI preview (uses custom token)
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
                 } else {
+                    // Standard usage on GitHub/Localhost
                     await signInAnonymously(auth);
                 }
             } catch (error) {
                 console.error("Auth failed", error);
-                alert("Connection failed. Please refresh.");
+                
+                let msg = "Connection failed.";
+                if (error.code === 'auth/operation-not-allowed') {
+                    msg = "ERROR: You must enable 'Anonymous Auth' in the Firebase Console (Build > Authentication > Sign-in method).";
+                } else if (error.code === 'auth/api-key-not-valid') {
+                    msg = "ERROR: Your API Key is invalid. Check your config.";
+                }
+
+                document.getElementById('view-login').innerHTML = `
+                <div class="text-center text-red-500 p-8">
+                    <h2 class="text-2xl font-bold mb-2">Authentication Error</h2>
+                    <p>${msg}</p>
+                    <p class="text-xs mt-4 text-gray-500">${error.message}</p>
+                </div>`;
             }
         }
 
@@ -70,8 +137,6 @@
                 await ensureUserProfile();
                 setupUserListener();
                 switchView('lobby');
-            } else {
-                switchView('login');
             }
         });
 
@@ -331,26 +396,12 @@
         }
 
         window.proposeDouble = async () => {
-             // Winner puts their winnings on the line (already in pot).
-             // Opponent needs to match the ORIGINAL bet size increment (or match the pot? Usually Double or Nothing means matching the current holding).
-             // Let's say Round 1: 10 vs 10. Pot 20.
-             // Double: Winner bets the 20. Loser must bet 20. New Pot 60. 
-             // Logic: "Start bet from that size".
-             // Simplified: Winner challenges. Loser must pay `currentPot` to stay in.
-             
-             // Let's stick to the prompt: "Double it again".
-             // Pot is X. Winner bets X. Loser bets X. New Pot 3X. 
-             // Actually, usually Double or Nothing is: I have 20. I bet 20. You bet 20. Win = 40.
+             // Winner risks Pot. Loser matches Pot. New Pot = Pot * 2 + Pot (if matched) -> No wait.
+             // Winner has 20. Risks 20. Loser puts in 20. Pot 40. Winner takes 40.
              
              const roomRef = doc(db, COLLECTION_ROOMS, currentRoomId);
              const roomSnap = await getDoc(roomRef);
              const data = roomSnap.data();
-             
-             // The "Bet Size" for the NEXT round becomes the current POT value (or half it?). 
-             // Let's make the "cost to call" equal to the current pot / 2 (original bet) or escalate?
-             // Simplest engaging mechanic: 
-             // Winner risks Pot. Loser matches Pot. New Pot = Pot * 2 + Pot (if matched) -> No wait.
-             // Winner has 20. Risks 20. Loser puts in 20. Pot 40. Winner takes 40.
              
              // Update Room
              await updateDoc(roomRef, {
