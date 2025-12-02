@@ -231,28 +231,18 @@
         const BONUS_AMOUNT = 100;
         const BONUS_COOLDOWN = 24 * 60 * 60 * 1000; 
 
-        // Definire corectă views
-        const views = {
-            login: document.getElementById('view-login'),
-            lobby: document.getElementById('view-lobby'),
-            game: document.getElementById('view-game'),
-            leaderboard: document.getElementById('view-leaderboard')
-        };
-
+        // Initial DOM Elements (Lazy getters used where critical)
         const ui = {
             balance: document.querySelectorAll('.ui-balance'),
             username: document.querySelectorAll('.ui-username'),
             avatar: document.querySelectorAll('.ui-avatar'),
             status: document.getElementById('game-status'),
             coin: document.getElementById('coin'),
-            waitingControls: document.getElementById('waiting-controls'),
-            activeControls: document.getElementById('active-controls'),
             activeGamesList: document.getElementById('active-games-list'),
             leaderboardList: document.getElementById('leaderboard-list'),
             bonusCard: document.getElementById('bonus-card'),
             bonusBtn: document.getElementById('btn-claim-bonus'),
-            bonusTimer: document.getElementById('bonus-timer'),
-            potDisplay: document.getElementById('pot-display')
+            bonusTimer: document.getElementById('bonus-timer')
         };
 
         // --- Funcții Autentificare ---
@@ -435,8 +425,20 @@
         };
 
         window.switchView = (viewName) => {
-            Object.values(views).forEach(el => el.classList.add('hidden'));
-            if(views[viewName]) views[viewName].classList.remove('hidden');
+            const allViews = {
+                login: document.getElementById('view-login'),
+                lobby: document.getElementById('view-lobby'),
+                game: document.getElementById('view-game'),
+                leaderboard: document.getElementById('view-leaderboard')
+            };
+            
+            Object.values(allViews).forEach(el => {
+                if(el) el.classList.add('hidden');
+            });
+            
+            const target = allViews[viewName];
+            if(target) target.classList.remove('hidden');
+            
             if (viewName === 'leaderboard') loadLeaderboard();
         };
 
@@ -475,9 +477,6 @@
 
             if (forceCreate) { await createRoom(betSize, joinCode); return; }
 
-            // === SIMPLIFIED QUERY TO FIX MATCHMAKING ===
-            // Removed 'joinCode' check to avoid complex index requirements.
-            // We filter in memory instead.
             const q = query(
                 collection(db, COLLECTION_ROOMS), 
                 where('status', '==', 'waiting'), 
@@ -498,8 +497,7 @@
                 else await createRoom(betSize, null);
                 
             } catch (error) {
-                console.error("Matchmaking error (likely index):", error);
-                // Fallback: If query fails, create a room so the user isn't stuck
+                console.error("Matchmaking error:", error);
                 await createRoom(betSize, null);
             }
         }
@@ -568,15 +566,20 @@
         }
 
         function renderGameState(data) {
-            ui.potDisplay.innerText = data.currentPot;
+            const potDisplay = document.getElementById('pot-display');
+            if(potDisplay) potDisplay.innerText = data.currentPot;
+            
+            const waitingControls = document.getElementById('waiting-controls');
+            const activeControls = document.getElementById('active-controls');
+
             if (data.status === 'finished') {
                 const isWinner = data.winnerId === currentUser.uid;
                 const resultText = isWinner ? t('you_won') : t('you_lost');
                 const colorClass = isWinner ? 'text-green-500' : 'text-red-500';
                 ui.status.innerHTML = `<span class="${colorClass} font-bold text-2xl">${resultText}</span><br><span class="text-sm text-gray-400">${t('reason')} ${data.endReason}</span>`;
                 document.getElementById('my-actions').innerHTML = `<button onclick="switchView('lobby')" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-lg border-b-4 border-gray-900 mt-4">${t('btn_back_lobby')}</button>`;
-                ui.waitingControls.classList.add('hidden');
-                ui.activeControls.classList.add('hidden');
+                if(waitingControls) waitingControls.classList.add('hidden');
+                if(activeControls) activeControls.classList.add('hidden');
                 return;
             }
 
@@ -591,16 +594,16 @@
             if (opponentId) {
                 ui.opponentName.innerText = t('opponent_connected'); 
                 ui.opponentStatus.innerText = t('ready');
-                ui.waitingControls.classList.add('hidden');
-                ui.activeControls.classList.remove('hidden');
+                if(waitingControls) waitingControls.classList.add('hidden');
+                if(activeControls) activeControls.classList.remove('hidden');
             } else {
                 ui.opponentName.innerText = t('waiting_generic');
                 ui.opponentStatus.innerText = "";
-                ui.activeControls.classList.add('hidden');
+                if(activeControls) activeControls.classList.add('hidden');
                 
                 // Show Cancel Button Logic
-                if (amIHost && data.status === 'waiting') {
-                    ui.waitingControls.classList.remove('hidden');
+                if (amIHost && data.status === 'waiting' && waitingControls) {
+                    waitingControls.classList.remove('hidden');
                 }
             }
 
@@ -714,9 +717,15 @@
         function resetGameUI() {
              document.getElementById('coin').style.animation = 'none';
              document.getElementById('my-actions').innerHTML = '';
-             ui.potDisplay.innerText = '0';
-             ui.waitingControls.classList.add('hidden');
-             ui.activeControls.classList.add('hidden');
+             
+             const potDisplay = document.getElementById('pot-display');
+             if(potDisplay) potDisplay.innerText = '0';
+             
+             const waitingControls = document.getElementById('waiting-controls');
+             const activeControls = document.getElementById('active-controls');
+             
+             if(waitingControls) waitingControls.classList.add('hidden');
+             if(activeControls) activeControls.classList.add('hidden');
         }
 
         async function loadLeaderboard() {
