@@ -10,6 +10,7 @@
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        // Adăugat GoogleAuthProvider, signInWithPopup, signOut
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, getDocs, limit, orderBy, increment, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
@@ -27,6 +28,7 @@
             measurementId: "G-03GWNJGV4M"
         };
 
+        // Integrare mediu de dezvoltare (AI Preview)
         if ((!firebaseConfig.apiKey || firebaseConfig.apiKey === "") && typeof __firebase_config !== 'undefined') {
              try { Object.assign(firebaseConfig, JSON.parse(__firebase_config)); } catch(e){}
         }
@@ -40,238 +42,94 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
         
-        // --- LOCALIZATION SYSTEM ---
-        let currentLang = localStorage.getItem('coinflip_lang') || 'ro';
-
-        const translations = {
-            ro: {
-                app_title: "COINFLIP PVP",
-                nav_lobby: "Lobby",
-                nav_ranks: "Top",
-                login_subtitle: "Dublaj sau Nimic cu jucători reali",
-                btn_google: "Conectare cu Google",
-                btn_guest: "Joacă ca Oaspete",
-                or: "SAU",
-                welcome: "BINE AI VENIT",
-                daily_bonus_title: "BONUS ZILNIC",
-                btn_wait: "Așteaptă...",
-                timer_check: "Verificare...",
-                my_bets: "Pariurile Mele",
-                join_code_title: "Intră cu Cod",
-                placeholder_code: "Cod Cameră",
-                btn_join: "INTRĂ",
-                quick_match: "Meci Rapid (Public)",
-                create_room_title: "Creează Cameră Privată",
-                placeholder_amount: "Suma (p)",
-                placeholder_secret: "Cod Secret (Opțional)",
-                btn_create: "CREEAZĂ",
-                helper_code: "Lasă codul gol pentru pariu public.",
-                pot: "POT",
-                waiting_opponent: "Așteptare adversar...",
-                waiting_generic: "Așteptare...",
-                game_status_init: "Se încarcă...",
-                btn_cancel: "Anulează & Refund",
-                btn_leave: "Ieși din joc",
-                btn_back_lobby: "ÎNAPOI ÎN LOBBY",
-                auth_error: "Eroare la conectare: ",
-                confirm_logout: "Ești sigur că vrei să te deconectezi?",
-                bonus_claim: "REVENDICĂ 100p",
-                bonus_wait: "AȘTEAPTĂ",
-                bonus_ready: "Bonusul este disponibil acum!",
-                bonus_next: "Următorul bonus în:",
-                bonus_received: "Ai primit 100 puncte bonus zilnic!",
-                bonus_error: "Nu s-a putut revendica bonusul.",
-                no_active_bets: "Niciun pariu activ.",
-                btn_manage: "Gestionează",
-                btn_rejoin: "Reintră",
-                invalid_amount: "Sumă invalidă.",
-                enter_code: "Introdu un cod.",
-                searching: "Caut camera...",
-                room_not_found: "Camera nu există sau a început deja.",
-                insufficient_funds: "Fonduri insuficiente!",
-                room_deleted: "Camera a fost ștearsă.",
-                opponent_folded: "Adversarul a renunțat! Ai câștigat",
-                opponent_left: "Adversarul a ieșit. Ai câștigat",
-                opponent_cashed: "Adversarul a încasat! A luat",
-                you_won: "AI CÂȘTIGAT",
-                you_lost: "AI PIERDUT",
-                reason: "Motiv:",
-                room_code: "Cod Cameră:",
-                share_code: "Trimite acest cod",
-                opponent_connected: "Adversar Conectat",
-                ready: "Pregătit",
-                game_start: "Start Joc! Gazda dă cu banul...",
-                btn_flip: "DĂ CU BANUL",
-                challenge: "PROVOCARE!",
-                match_bet: "Egalezi",
-                btn_accept: "ACCEPT",
-                btn_fold: "RENUNȚ",
-                confirm_cancel: "Anulezi pariul și recuperezi punctele?",
-                game_started_error: "Jocul a început deja!",
-                confirm_leave: "Ieși din joc? Vei pierde punctele din pot.",
-                you_left: "Ai ieșit din joc.",
-                you_folded: "Ai renunțat.",
-                btn_double: "DOUBLE UP",
-                btn_cashout: "CASH OUT",
-                won_amount: "Ai câștigat"
-            },
-            en: {
-                app_title: "COINFLIP PVP",
-                nav_lobby: "Lobby",
-                nav_ranks: "Ranks",
-                login_subtitle: "Double or Nothing vs Real Players",
-                btn_google: "Sign in with Google",
-                btn_guest: "Play as Guest",
-                or: "OR",
-                welcome: "WELCOME",
-                daily_bonus_title: "DAILY BONUS",
-                btn_wait: "Wait...",
-                timer_check: "Checking...",
-                my_bets: "My Bets",
-                join_code_title: "Join with Code",
-                placeholder_code: "Room Code",
-                btn_join: "JOIN",
-                quick_match: "Quick Match (Public)",
-                create_room_title: "Create Private Room",
-                placeholder_amount: "Amount (p)",
-                placeholder_secret: "Secret Code (Optional)",
-                btn_create: "CREATE",
-                helper_code: "Leave code empty for public bet.",
-                pot: "POT",
-                waiting_opponent: "Waiting for opponent...",
-                waiting_generic: "Waiting...",
-                game_status_init: "Loading...",
-                btn_cancel: "Cancel & Refund",
-                btn_leave: "Leave / Forfeit",
-                btn_back_lobby: "BACK TO LOBBY",
-                auth_error: "Login error: ",
-                confirm_logout: "Are you sure you want to log out?",
-                bonus_claim: "CLAIM 100p",
-                bonus_wait: "WAIT",
-                bonus_ready: "Bonus is ready!",
-                bonus_next: "Next bonus in:",
-                bonus_received: "You received 100 points daily bonus!",
-                bonus_error: "Could not claim bonus.",
-                no_active_bets: "No active bets.",
-                btn_manage: "Manage",
-                btn_rejoin: "Rejoin",
-                invalid_amount: "Invalid amount.",
-                enter_code: "Enter a code.",
-                searching: "Searching...",
-                room_not_found: "Room not found or already started.",
-                insufficient_funds: "Insufficient funds!",
-                room_deleted: "Room has been deleted.",
-                opponent_folded: "Opponent folded! You win",
-                opponent_left: "Opponent left. You win",
-                opponent_cashed: "Opponent cashed out! They took",
-                you_won: "YOU WON",
-                you_lost: "YOU LOST",
-                reason: "Reason:",
-                room_code: "Room Code:",
-                share_code: "Share this code",
-                opponent_connected: "Opponent Connected",
-                ready: "Ready",
-                game_start: "Game On! Host flipping...",
-                btn_flip: "FLIP COIN",
-                challenge: "CHALLENGE!",
-                match_bet: "Match",
-                btn_accept: "ACCEPT",
-                btn_fold: "FOLD",
-                confirm_cancel: "Cancel bet and refund points?",
-                game_started_error: "Game already started!",
-                confirm_leave: "Leave game? You will forfeit the pot.",
-                you_left: "You left the game.",
-                you_folded: "You folded.",
-                btn_double: "DOUBLE UP",
-                btn_cashout: "CASH OUT",
-                won_amount: "You won"
-            }
-        };
-
-        window.t = (key) => {
-            return translations[currentLang][key] || key;
-        }
-
-        window.applyLanguage = (lang) => {
-            currentLang = lang;
-            localStorage.setItem('coinflip_lang', lang);
-            
-            document.getElementById('lang-ro').classList.toggle('text-yellow-400', lang === 'ro');
-            document.getElementById('lang-ro').classList.toggle('text-gray-400', lang !== 'ro');
-            document.getElementById('lang-en').classList.toggle('text-yellow-400', lang === 'en');
-            document.getElementById('lang-en').classList.toggle('text-gray-400', lang !== 'en');
-
-            document.querySelectorAll('[data-i18n]').forEach(el => {
-                const key = el.getAttribute('data-i18n');
-                if (translations[lang][key]) {
-                    if (el.tagName === 'INPUT') {
-                        el.placeholder = translations[lang][key];
-                    } else {
-                        el.innerText = translations[lang][key];
-                    }
-                }
-            });
-            
-            if (currentUser && document.getElementById('view-lobby').classList.contains('hidden') === false) {
-               updateBonusUI(); 
-            }
-        }
-
         // --- Stare Globală ---
         let currentUser = null;
         let currentRoomId = null;
-        let userData = null; 
+        let userData = null; // Păstrăm datele utilizatorului local pentru timer
         let roomUnsubscribe = null;
         let userUnsubscribe = null;
         let myActiveRoomsUnsubscribe = null;
         let bonusInterval = null;
 
+        // --- Constante ---
         const COLLECTION_USERS = `coinflip_users`;
         const COLLECTION_ROOMS = `coinflip_rooms`; 
         const BONUS_AMOUNT = 100;
-        const BONUS_COOLDOWN = 24 * 60 * 60 * 1000; 
+        const BONUS_COOLDOWN = 24 * 60 * 60 * 1000; // 24 ore în milisecunde
+
+        // --- Elemente DOM ---
+        const views = {
+            login: document.getElementById('view-login'),
+            lobby: document.getElementById('view-lobby'),
+            game: document.getElementById('view-game'),
+            leaderboard: document.getElementById('view-leaderboard')
+        };
+
+        const ui = {
+            balance: document.querySelectorAll('.ui-balance'),
+            username: document.querySelectorAll('.ui-username'),
+            avatar: document.querySelectorAll('.ui-avatar'),
+            status: document.getElementById('game-status'),
+            coin: document.getElementById('coin'),
+            waitingControls: document.getElementById('waiting-controls'),
+            activeControls: document.getElementById('active-controls'),
+            activeGamesList: document.getElementById('active-games-list'),
+            leaderboardList: document.getElementById('leaderboard-list'),
+            bonusCard: document.getElementById('bonus-card'),
+            bonusBtn: document.getElementById('btn-claim-bonus'),
+            bonusTimer: document.getElementById('bonus-timer')
+        };
 
         // --- Funcții Autentificare ---
 
+        // 1. Google Login
         window.loginGoogle = async () => {
             const provider = new GoogleAuthProvider();
             try {
                 await signInWithPopup(auth, provider);
+                // AuthStateChanged va prelua controlul
             } catch (error) {
                 console.error(error);
-                alert(t('auth_error') + error.message);
+                alert("Eroare la conectare: " + error.message);
             }
         };
 
+        // 2. Guest Login
         window.loginGuest = async () => {
             try {
                 await signInAnonymously(auth);
             } catch (error) {
                 console.error(error);
-                alert("Guest Error: " + error.message);
+                alert("Eroare Guest: " + error.message);
             }
         };
 
+        // 3. Logout
         window.performLogout = async () => {
-            if(confirm(t('confirm_logout'))) {
+            if(confirm("Ești sigur că vrei să te deconectezi?")) {
                 await signOut(auth);
                 window.location.reload();
             }
         };
 
+        // Listener Autentificare
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 currentUser = user;
-                if (typeof __initial_auth_token !== 'undefined' && !user.isAnonymous) {}
+                // Dacă suntem în AI Preview cu token custom
+                if (typeof __initial_auth_token !== 'undefined' && !user.isAnonymous) {
+                     // Logica deja existentă se ocupă de token
+                }
+                
                 await ensureUserProfile();
                 setupUserListener();
                 setupActiveGamesListener();
                 
-                applyLanguage(currentLang);
-                window.switchView('lobby');
+                // Ascundem login, arătăm lobby
+                switchView('lobby');
             } else {
-                applyLanguage(currentLang);
-                window.switchView('login');
+                // Dacă nu e logat, arătăm ecranul de login
+                switchView('login');
             }
         });
 
@@ -281,77 +139,85 @@
                 const snap = await getDoc(userRef);
                 
                 if (!snap.exists()) {
+                    // Utilizator nou
                     await setDoc(userRef, {
-                        username: currentUser.displayName || `Player ${currentUser.uid.slice(0, 4)}`,
+                        username: currentUser.displayName || `Jucător ${currentUser.uid.slice(0, 4)}`,
                         photoURL: currentUser.photoURL || null,
-                        balance: 1000, 
+                        balance: 1000, // Bonus de început
                         wins: 0,
-                        lastBonusClaim: 0, 
+                        lastBonusClaim: 0, // Nu a revendicat niciodată
                         createdAt: Date.now()
                     });
-                } else if (currentUser.photoURL && !snap.data().photoURL) {
-                    await updateDoc(userRef, { photoURL: currentUser.photoURL });
+                } else {
+                    // Actualizăm poza/numele dacă s-a logat cu Google peste un cont existent (opțional)
+                    if (currentUser.photoURL && !snap.data().photoURL) {
+                        await updateDoc(userRef, { photoURL: currentUser.photoURL });
+                    }
                 }
             } catch (e) {
                 console.error("Profile Error:", e);
-                if (e.code === 'permission-denied') alert("Permission Error: Check Firestore Rules.");
+                if (e.code === 'permission-denied') {
+                    alert("Eroare Permisiuni: Verifică regulile Firestore.");
+                }
             }
         }
 
-        // --- Logică Bonus ---
+        // --- Logică Bonus Zilnic ---
         
         function updateBonusUI() {
             if (!userData) return;
+            
             const now = Date.now();
             const lastClaim = userData.lastBonusClaim || 0;
             const diff = now - lastClaim;
-            
-            const bonusBtn = document.getElementById('btn-claim-bonus');
-            const bonusTimer = document.getElementById('bonus-timer');
-
-            if (!bonusBtn || !bonusTimer) return;
 
             if (diff >= BONUS_COOLDOWN) {
-                bonusBtn.disabled = false;
-                bonusBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-                bonusBtn.classList.add('animate-pulse');
-                bonusBtn.innerHTML = `<i class="fa-solid fa-gift mr-2"></i>${t('bonus_claim')}`;
-                bonusTimer.innerText = t('bonus_ready');
-                bonusTimer.classList.add('text-green-400');
+                // Bonus Disponibil
+                ui.bonusBtn.disabled = false;
+                ui.bonusBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                ui.bonusBtn.classList.add('animate-pulse');
+                ui.bonusBtn.innerHTML = '<i class="fa-solid fa-gift mr-2"></i>REVENDICĂ 100p';
+                ui.bonusTimer.innerText = "Bonusul este disponibil acum!";
+                ui.bonusTimer.classList.add('text-green-400');
                 if(bonusInterval) clearInterval(bonusInterval);
             } else {
-                bonusBtn.disabled = true;
-                bonusBtn.classList.add('opacity-50', 'cursor-not-allowed');
-                bonusBtn.classList.remove('animate-pulse');
-                bonusBtn.innerHTML = `<i class="fa-solid fa-clock mr-2"></i>${t('bonus_wait')}`;
-                bonusTimer.classList.remove('text-green-400');
+                // Bonus Indisponibil - Arată Timer
+                ui.bonusBtn.disabled = true;
+                ui.bonusBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                ui.bonusBtn.classList.remove('animate-pulse');
+                ui.bonusBtn.innerHTML = '<i class="fa-solid fa-clock mr-2"></i>AȘTEAPTĂ';
+                ui.bonusTimer.classList.remove('text-green-400');
                 
                 const timeLeft = BONUS_COOLDOWN - diff;
                 const hours = Math.floor((timeLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
                 const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
                 const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
                 
-                bonusTimer.innerText = `${t('bonus_next')} ${hours}h ${minutes}m ${seconds}s`;
+                ui.bonusTimer.innerText = `Următorul bonus în: ${hours}h ${minutes}m ${seconds}s`;
             }
         }
 
         window.claimDailyBonus = async () => {
             if (!userData) return;
+            
             const now = Date.now();
             const lastClaim = userData.lastBonusClaim || 0;
             
             if (now - lastClaim >= BONUS_COOLDOWN) {
-                const bonusBtn = document.getElementById('btn-claim-bonus');
-                if(bonusBtn) bonusBtn.disabled = true;
+                ui.bonusBtn.disabled = true; // Previne dublu click
+                
                 try {
                     await updateDoc(doc(db, COLLECTION_USERS, currentUser.uid), {
                         balance: increment(BONUS_AMOUNT),
                         lastBonusClaim: now
                     });
-                    alert(t('bonus_received'));
+                    
+                    // Efect vizual (confetti sau simplu alert)
+                    alert(`Ai primit ${BONUS_AMOUNT} puncte bonus zilnic!`);
+                    
                 } catch (e) {
-                    console.error("Error Bonus:", e);
-                    alert(t('bonus_error'));
+                    console.error("Eroare Bonus:", e);
+                    alert("Nu s-a putut revendica bonusul.");
                 }
             }
         };
@@ -361,11 +227,22 @@
             userUnsubscribe = onSnapshot(doc(db, COLLECTION_USERS, currentUser.uid), (doc) => {
                 if (doc.exists()) {
                     userData = doc.data();
-                    document.querySelectorAll('.ui-balance').forEach(el => el.innerText = userData.balance);
-                    document.querySelectorAll('.ui-username').forEach(el => el.innerText = userData.username);
-                    document.querySelectorAll('.ui-avatar').forEach(img => {
-                        img.src = userData.photoURL || `https://api.dicebear.com/9.x/bottts-neutral/svg?seed=${currentUser.uid}`;
+                    
+                    // Actualizare UI Bază
+                    ui.balance.forEach(el => el.innerText = userData.balance);
+                    ui.username.forEach(el => el.innerText = userData.username);
+                    
+                    // Actualizare Avatar
+                    ui.avatar.forEach(img => {
+                        if (userData.photoURL) {
+                            img.src = userData.photoURL;
+                        } else {
+                            // Avatar default (roboțel bazat pe ID)
+                            img.src = `https://api.dicebear.com/9.x/bottts-neutral/svg?seed=${currentUser.uid}`;
+                        }
                     });
+
+                    // Pornire Timer Bonus
                     updateBonusUI();
                     if (bonusInterval) clearInterval(bonusInterval);
                     bonusInterval = setInterval(updateBonusUI, 1000);
@@ -373,6 +250,7 @@
             });
         }
 
+        // --- Rejoin / Active Games Logic ---
         function setupActiveGamesListener() {
             if (myActiveRoomsUnsubscribe) myActiveRoomsUnsubscribe();
             const q = query(
@@ -382,18 +260,17 @@
             );
 
             myActiveRoomsUnsubscribe = onSnapshot(q, (snapshot) => {
-                const list = document.getElementById('active-games-list');
-                if(!list) return;
+                const list = ui.activeGamesList;
                 list.innerHTML = '';
                 if (snapshot.empty) {
-                    list.innerHTML = `<div class="text-gray-500 text-sm italic">${t('no_active_bets')}</div>`;
+                    list.innerHTML = '<div class="text-gray-500 text-sm italic">Niciun pariu activ.</div>';
                     return;
                 }
                 snapshot.forEach(doc => {
                     const data = doc.data();
                     const isWaiting = data.status === 'waiting';
                     const badgeColor = isWaiting ? 'bg-yellow-600' : 'bg-green-600';
-                    const badgeText = isWaiting ? (currentLang==='ro'?'AȘTEPTARE':'WAITING') : (currentLang==='ro'?'ÎN JOC':'PLAYING');
+                    const badgeText = isWaiting ? 'AȘTEPTARE' : 'ÎN JOC';
                     const el = document.createElement('div');
                     el.className = 'bg-gray-800 border border-gray-700 p-3 rounded flex justify-between items-center mb-2';
                     el.innerHTML = `
@@ -403,7 +280,7 @@
                             ${data.joinCode ? `<span class="ml-2 text-xs text-blue-400"><i class="fa-solid fa-key"></i> ${data.joinCode}</span>` : ''}
                         </div>
                         <button onclick="rejoinRoom('${doc.id}')" class="text-sm bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-white">
-                            ${isWaiting ? t('btn_manage') : t('btn_rejoin')}
+                            ${isWaiting ? 'Gestionează' : 'Reintră'}
                         </button>
                     `;
                     list.appendChild(el);
@@ -413,43 +290,31 @@
 
         window.rejoinRoom = (roomId) => {
             currentRoomId = roomId;
-            window.switchView('game');
+            switchView('game');
             subscribeToRoom(roomId);
         };
 
+        // --- Navigare ---
         window.switchView = (viewName) => {
-            const allViews = {
-                login: document.getElementById('view-login'),
-                lobby: document.getElementById('view-lobby'),
-                game: document.getElementById('view-game'),
-                leaderboard: document.getElementById('view-leaderboard')
-            };
-            
-            Object.values(allViews).forEach(el => {
-                if(el) el.classList.add('hidden');
-            });
-            
-            const target = allViews[viewName];
-            if(target) target.classList.remove('hidden');
-            
+            Object.values(views).forEach(el => el.classList.add('hidden'));
+            if(views[viewName]) views[viewName].classList.remove('hidden');
             if (viewName === 'leaderboard') loadLeaderboard();
         };
 
+        // --- Lobby Logic ---
         window.findMatch = async (betSize) => { await joinMatch(betSize, null); };
 
         window.createPrivateRoom = async () => {
              const betSize = parseInt(document.getElementById('custom-bet-size').value);
              const code = document.getElementById('custom-room-code').value.trim();
-             if (!betSize || betSize <= 0) return alert(t('invalid_amount'));
+             if (!betSize || betSize <= 0) return alert("Sumă invalidă.");
              await joinMatch(betSize, true, code || null);
         };
 
         window.joinByCode = async () => {
             const code = document.getElementById('join-room-code').value.trim();
-            if (!code) return alert(t('enter_code'));
-            const statusEl = document.getElementById('game-status');
-            if(statusEl) statusEl.innerHTML = `<span class="animate-pulse">${t('searching')}</span>`;
-            
+            if (!code) return alert("Introdu un cod.");
+            ui.status.innerHTML = '<span class="animate-pulse">Caut camera...</span>';
             const q = query(
                 collection(db, COLLECTION_ROOMS), 
                 where('joinCode', '==', code),
@@ -457,7 +322,7 @@
                 limit(1)
             );
             const snapshot = await getDocs(q);
-            if (snapshot.empty) { alert(t('room_not_found')); return; }
+            if (snapshot.empty) { alert("Camera nu există sau a început deja."); return; }
             const roomDoc = snapshot.docs[0];
             const roomData = roomDoc.data();
             if (roomData.hostId === currentUser.uid) rejoinRoom(roomDoc.id);
@@ -465,12 +330,10 @@
         };
 
         async function joinMatch(betSize, forceCreate, joinCode = null) {
-            if (userData.balance < betSize) { alert(t('insufficient_funds')); return; }
-            window.switchView('game');
+            if (userData.balance < betSize) { alert("Fonduri insuficiente!"); return; }
+            switchView('game');
             resetGameUI();
-            
-            const statusEl = document.getElementById('game-status');
-            if(statusEl) statusEl.innerHTML = `<span class="animate-pulse">${t('searching')}</span>`;
+            ui.status.innerHTML = '<span class="animate-pulse">Se caută...</span>';
 
             if (forceCreate) { await createRoom(betSize, joinCode); return; }
 
@@ -478,23 +341,13 @@
                 collection(db, COLLECTION_ROOMS), 
                 where('status', '==', 'waiting'), 
                 where('betSize', '==', betSize),
-                limit(20)
+                where('joinCode', '==', null), 
+                limit(10)
             );
-            
-            try {
-                let snapshot = await getDocs(q);
-                const validRoom = snapshot.docs.find(d => {
-                    const data = d.data();
-                    return data.hostId !== currentUser.uid && !data.joinCode;
-                });
-
-                if (validRoom) await enterRoom(validRoom.id, betSize);
-                else await createRoom(betSize, null);
-                
-            } catch (error) {
-                console.error("Matchmaking error:", error);
-                await createRoom(betSize, null);
-            }
+            let snapshot = await getDocs(q);
+            const validRoom = snapshot.docs.find(d => d.data().hostId !== currentUser.uid);
+            if (validRoom) await enterRoom(validRoom.id, betSize);
+            else await createRoom(betSize, null);
         }
 
         async function createRoom(betSize, joinCode) {
@@ -528,13 +381,14 @@
             subscribeToRoom(roomId);
         }
 
+        // --- Game Logic ---
         function subscribeToRoom(roomId) {
             if (roomUnsubscribe) roomUnsubscribe();
             roomUnsubscribe = onSnapshot(doc(db, COLLECTION_ROOMS, roomId), async (snapshot) => {
                 if (!snapshot.exists()) {
                     if (!document.getElementById('view-game').classList.contains('hidden')) {
-                        alert(t('room_deleted'));
-                        window.switchView('lobby');
+                        alert("Camera a fost ștearsă.");
+                        switchView('lobby');
                     }
                     return;
                 }
@@ -543,16 +397,16 @@
                     const isInGameView = !document.getElementById('view-game').classList.contains('hidden');
                     if (isInGameView) {
                         if (data.endReason === 'folded' && data.winnerId === currentUser.uid) {
-                            alert(`${t('opponent_folded')} ${data.currentPot}p.`);
-                            window.switchView('lobby'); return;
+                            alert(`Adversarul a renunțat! Ai câștigat ${data.currentPot}p.`);
+                            switchView('lobby'); return;
                         }
                         if (data.endReason === 'left' && data.winnerId === currentUser.uid) {
-                            alert(`${t('opponent_left')} ${data.currentPot}p.`);
-                            window.switchView('lobby'); return;
+                            alert(`Adversarul a ieșit. Ai câștigat ${data.currentPot}p.`);
+                            switchView('lobby'); return;
                         }
                         if (data.endReason === 'cashout' && data.winnerId !== currentUser.uid) {
-                            alert(`${t('opponent_cashed')} ${data.currentPot}p.`);
-                            window.switchView('lobby'); return;
+                            alert(`Adversarul a încasat! A luat ${data.currentPot}p.`);
+                            switchView('lobby'); return;
                         }
                     }
                 }
@@ -561,52 +415,40 @@
         }
 
         function renderGameState(data) {
-            const potDisplay = document.getElementById('pot-display');
-            if(potDisplay) potDisplay.innerText = data.currentPot;
-            
-            const statusEl = document.getElementById('game-status');
-            const waitingControls = document.getElementById('waiting-controls');
-            const activeControls = document.getElementById('active-controls');
-            const opponentName = document.getElementById('opponent-name');
-            const opponentStatus = document.getElementById('opponent-status');
-            const myActions = document.getElementById('my-actions');
-
+            ui.potDisplay.innerText = data.currentPot;
             if (data.status === 'finished') {
                 const isWinner = data.winnerId === currentUser.uid;
-                const resultText = isWinner ? t('you_won') : t('you_lost');
+                const resultText = isWinner ? 'AI CÂȘTIGAT' : 'AI PIERDUT';
                 const colorClass = isWinner ? 'text-green-500' : 'text-red-500';
-                if(statusEl) statusEl.innerHTML = `<span class="${colorClass} font-bold text-2xl">${resultText}</span><br><span class="text-sm text-gray-400">${t('reason')} ${data.endReason}</span>`;
-                if(myActions) myActions.innerHTML = `<button onclick="switchView('lobby')" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-lg border-b-4 border-gray-900 mt-4">${t('btn_back_lobby')}</button>`;
-                if(waitingControls) waitingControls.classList.add('hidden');
-                if(activeControls) activeControls.classList.add('hidden');
+                ui.status.innerHTML = `<span class="${colorClass} font-bold text-2xl">${resultText}</span><br><span class="text-sm text-gray-400">Motiv: ${data.endReason}</span>`;
+                document.getElementById('my-actions').innerHTML = `<button onclick="switchView('lobby')" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-lg border-b-4 border-gray-900 mt-4">ÎNAPOI ÎN LOBBY</button>`;
+                ui.waitingControls.classList.add('hidden');
+                ui.activeControls.classList.add('hidden');
                 return;
             }
 
             const amIHost = data.hostId === currentUser.uid;
-            if (data.status === 'waiting' && data.joinCode && statusEl) {
-                statusEl.innerHTML = `${t('room_code')} <span class="text-yellow-400 font-mono text-2xl tracking-widest">${data.joinCode}</span>`;
-            } else if (data.status === 'waiting' && statusEl) {
-                statusEl.innerText = t('waiting_opponent');
+            if (data.status === 'waiting' && data.joinCode) {
+                ui.status.innerHTML = `Cod Cameră: <span class="text-yellow-400 font-mono text-2xl tracking-widest">${data.joinCode}</span>`;
+            } else if (data.status === 'waiting') {
+                ui.status.innerText = "Așteptare adversar...";
             }
 
             const opponentId = amIHost ? data.guestId : data.hostId;
             if (opponentId) {
-                if(opponentName) opponentName.innerText = t('opponent_connected'); 
-                if(opponentStatus) opponentStatus.innerText = t('ready');
-                if(waitingControls) waitingControls.classList.add('hidden');
-                if(activeControls) activeControls.classList.remove('hidden');
+                ui.opponentName.innerText = "Adversar Conectat"; 
+                ui.opponentStatus.innerText = "Pregătit";
+                ui.waitingControls.classList.add('hidden');
+                ui.activeControls.classList.remove('hidden');
             } else {
-                if(opponentName) opponentName.innerText = t('waiting_generic');
-                if(opponentStatus) opponentStatus.innerText = "";
-                if(activeControls) activeControls.classList.add('hidden');
-                
-                // Show Cancel Button Logic
-                if (amIHost && data.status === 'waiting' && waitingControls) {
-                    waitingControls.classList.remove('hidden');
-                }
+                ui.opponentName.innerText = "Așteptare...";
+                ui.opponentStatus.innerText = "";
+                ui.activeControls.classList.add('hidden');
+                if (amIHost && data.status === 'waiting') ui.waitingControls.classList.remove('hidden');
             }
 
-            if(myActions) myActions.innerHTML = '';
+            const myActions = document.getElementById('my-actions');
+            myActions.innerHTML = '';
 
             if (data.status === 'playing') {
                 if (data.lastFlip && data.lastFlip.timestamp > (window.lastProcessedFlip || 0)) {
@@ -615,26 +457,26 @@
                     setTimeout(() => {
                          const winnerId = data.lastFlip.result === 'heads' ? data.hostId : data.guestId;
                          if (winnerId === currentUser.uid) {
-                             if(statusEl) statusEl.innerHTML = `<span class="text-green-400 font-bold">${t('you_won')}!</span>`;
+                             ui.status.innerHTML = `<span class="text-green-400 font-bold">AI CÂȘTIGAT!</span>`;
                              showWinnerControls(data);
                          } else {
-                             if(statusEl) statusEl.innerHTML = `<span class="text-red-400 font-bold">${t('you_lost')}!</span>`;
+                             ui.status.innerHTML = `<span class="text-red-400 font-bold">AI PIERDUT!</span> Așteaptă...`;
                          }
                     }, 2000);
                     return;
                 }
 
-                if (!data.lastFlip && statusEl && myActions) {
-                    statusEl.innerText = t('game_start');
-                    if (amIHost) myActions.innerHTML = `<button onclick="performFlip()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg shadow-lg">${t('btn_flip')}</button>`;
+                if (!data.lastFlip) {
+                    ui.status.innerText = "Start Joc! Gazda dă cu banul...";
+                    if (amIHost) myActions.innerHTML = `<button onclick="performFlip()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg shadow-lg">DĂ CU BANUL</button>`;
                 }
                 
-                if (data.actionRequired === 'accept_double' && statusEl && myActions) {
+                if (data.actionRequired === 'accept_double') {
                      const lastWinner = data.lastFlip.result === 'heads' ? data.hostId : data.guestId;
                      if (lastWinner !== currentUser.uid) {
-                         statusEl.innerHTML = `<span class="text-yellow-400">${t('challenge')}</span> ${t('match_bet')} ${data.betSize}p?`;
-                         myActions.innerHTML = `<div class="grid grid-cols-2 gap-2"><button onclick="respondToDouble(true)" class="bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg">${t('btn_accept')}</button><button onclick="respondToDouble(false)" class="bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-lg">${t('btn_fold')}</button></div>`;
-                     } else statusEl.innerText = t('waiting_generic');
+                         ui.status.innerHTML = `<span class="text-yellow-400">PROVOCARE!</span> Egalezi ${data.betSize}p?`;
+                         myActions.innerHTML = `<div class="grid grid-cols-2 gap-2"><button onclick="respondToDouble(true)" class="bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg">ACCEPT</button><button onclick="respondToDouble(false)" class="bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-lg">RENUNȚ</button></div>`;
+                     } else ui.status.innerText = "Așteptare răspuns...";
                 } else if (data.lastFlip && !data.actionRequired) {
                      const winnerId = data.lastFlip.result === 'heads' ? data.hostId : data.guestId;
                      if (winnerId === currentUser.uid) showWinnerControls(data);
@@ -643,17 +485,17 @@
         }
 
         window.cancelBet = async () => {
-            if (!confirm(t('confirm_cancel'))) return;
+            if (!confirm("Anulezi pariul și recuperezi punctele?")) return;
             const roomRef = doc(db, COLLECTION_ROOMS, currentRoomId);
             const data = (await getDoc(roomRef)).data();
-            if (data.status !== 'waiting') return alert(t('game_started_error'));
+            if (data.status !== 'waiting') return alert("Jocul a început deja!");
             await updateDoc(doc(db, COLLECTION_USERS, currentUser.uid), { balance: increment(data.currentPot) });
             await deleteDoc(roomRef);
-            window.switchView('lobby');
+            switchView('lobby');
         };
 
         window.leaveGame = async () => {
-            if (!confirm(t('confirm_leave'))) return;
+            if (!confirm("Ieși din joc? Vei pierde punctele din pot.")) return;
             const roomRef = doc(db, COLLECTION_ROOMS, currentRoomId);
             const data = (await getDoc(roomRef)).data();
             const opponentId = data.hostId === currentUser.uid ? data.guestId : data.hostId;
@@ -661,8 +503,7 @@
                 await updateDoc(doc(db, COLLECTION_USERS, opponentId), { balance: increment(data.currentPot), wins: increment(1) });
                 await updateDoc(roomRef, { status: 'finished', endReason: 'left', winnerId: opponentId });
             }
-            alert(t('you_left'));
-            window.switchView('lobby');
+            switchView('lobby');
         };
 
         window.performFlip = async () => {
@@ -671,8 +512,7 @@
         };
 
         function showWinnerControls(roomData) {
-            const myActions = document.getElementById('my-actions');
-            if(myActions) myActions.innerHTML = `<div class="flex flex-col gap-2"><button onclick="proposeDouble()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-lg border-b-4 border-purple-800">${t('btn_double')} (${roomData.currentPot * 2}p)</button><button onclick="takeWinnings()" class="bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg border-b-4 border-green-800">${t('btn_cashout')} ${roomData.currentPot}p</button></div>`;
+            document.getElementById('my-actions').innerHTML = `<div class="flex flex-col gap-2"><button onclick="proposeDouble()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-lg border-b-4 border-purple-800">DOUBLE UP (${roomData.currentPot * 2}p)</button><button onclick="takeWinnings()" class="bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg border-b-4 border-green-800">CASH OUT ${roomData.currentPot}p</button></div>`;
         }
 
         window.proposeDouble = async () => {
@@ -686,8 +526,7 @@
              const pot = (await getDoc(roomRef)).data().currentPot;
              await updateDoc(doc(db, COLLECTION_USERS, currentUser.uid), { balance: increment(pot), wins: increment(1) });
              await updateDoc(roomRef, { status: 'finished', endReason: 'cashout', winnerId: currentUser.uid }); 
-             alert(`${t('won_amount')} ${pot}p!`);
-             window.switchView('lobby');
+             switchView('lobby');
         };
 
         window.respondToDouble = async (accepted) => {
@@ -697,10 +536,9 @@
                 const prevWinnerId = data.lastFlip.result === 'heads' ? data.hostId : data.guestId;
                 await updateDoc(doc(db, COLLECTION_USERS, prevWinnerId), { balance: increment(data.currentPot), wins: increment(1) });
                 await updateDoc(roomRef, { status: 'finished', endReason: 'folded', winnerId: prevWinnerId });
-                alert(t('you_folded'));
-                window.switchView('lobby');
+                switchView('lobby');
             } else {
-                if (userData.balance < data.betSize) return alert(t('insufficient_funds'));
+                if (userData.balance < data.betSize) return alert("Puncte insuficiente!");
                 await updateDoc(doc(db, COLLECTION_USERS, currentUser.uid), { balance: increment(-data.betSize) });
                 await updateDoc(roomRef, { currentPot: increment(data.betSize), actionRequired: null, lastFlip: null });
             }
@@ -708,34 +546,21 @@
 
         function animateFlip(result) {
             const coin = document.getElementById('coin');
-            if(coin) {
-                coin.style.animation = 'none';
-                coin.offsetHeight;
-                coin.style.animation = result === 'heads' ? "flipHeads 2s forwards" : "flipTails 2s forwards";
-            }
+            coin.style.animation = 'none';
+            coin.offsetHeight;
+            coin.style.animation = result === 'heads' ? "flipHeads 2s forwards" : "flipTails 2s forwards";
         }
 
         function resetGameUI() {
-             const coin = document.getElementById('coin');
-             if(coin) coin.style.animation = 'none';
-             
-             const myActions = document.getElementById('my-actions');
-             if(myActions) myActions.innerHTML = '';
-             
-             const potDisplay = document.getElementById('pot-display');
-             if(potDisplay) potDisplay.innerText = '0';
-             
-             const waitingControls = document.getElementById('waiting-controls');
-             const activeControls = document.getElementById('active-controls');
-             
-             if(waitingControls) waitingControls.classList.add('hidden');
-             if(activeControls) activeControls.classList.add('hidden');
+             document.getElementById('coin').style.animation = 'none';
+             document.getElementById('my-actions').innerHTML = '';
+             ui.potDisplay.innerText = '0';
+             ui.waitingControls.classList.add('hidden');
+             ui.activeControls.classList.add('hidden');
         }
 
         async function loadLeaderboard() {
-            const list = document.getElementById('leaderboard-list');
-            if(!list) return;
-            list.innerHTML = `<div class="text-center p-4">${t('game_status_init')}</div>`;
+            ui.leaderboardList.innerHTML = '<div class="text-center p-4">Se încarcă...</div>';
             const q = query(collection(db, COLLECTION_USERS), orderBy("wins", "desc"), limit(10));
             const snap = await getDocs(q);
             let html = '';
@@ -744,8 +569,12 @@
                 const d = doc.data();
                 html += `<div class="flex justify-between items-center bg-gray-800 p-3 rounded mb-2 border border-gray-700"><div class="flex items-center gap-3"><span class="text-yellow-500 font-bold">#${rank++}</span><span class="font-bold">${d.username}</span></div><div class="text-green-400 font-mono">${d.wins} W</div></div>`;
             });
-            list.innerHTML = html || '<div class="text-center text-gray-500">...</div>';
+            ui.leaderboardList.innerHTML = html || '<div class="text-center text-gray-500">Niciun jucător.</div>';
         }
+
+        // Inițializare (Nu auto-login, așteptăm acțiunea utilizatorului)
+        // Dacă există user persistent, onAuthStateChanged va rula oricum.
+        
     </script>
 
     <style>
@@ -766,17 +595,12 @@
     <nav class="bg-gray-900 border-b border-gray-800 p-4 flex justify-between items-center z-10">
         <div class="flex items-center gap-2 cursor-pointer" onclick="switchView('lobby')">
             <i class="fa-solid fa-coins text-yellow-500 text-2xl"></i>
-            <span class="title-font text-xl tracking-wider hidden sm:block" data-i18n="app_title">COINFLIP PVP</span>
+            <span class="title-font text-xl tracking-wider hidden sm:block">COINFLIP PVP</span>
         </div>
         <div class="flex gap-4">
-            <button onclick="switchView('lobby')" class="hover:text-yellow-400"><i class="fa-solid fa-gamepad"></i> <span data-i18n="nav_lobby">Lobby</span></button>
-            <button onclick="switchView('leaderboard')" class="hover:text-yellow-400"><i class="fa-solid fa-trophy"></i> <span data-i18n="nav_ranks">Top</span></button>
+            <button onclick="switchView('lobby')" class="hover:text-yellow-400"><i class="fa-solid fa-gamepad"></i> Lobby</button>
+            <button onclick="switchView('leaderboard')" class="hover:text-yellow-400"><i class="fa-solid fa-trophy"></i> Top</button>
             <button onclick="performLogout()" class="hover:text-red-400"><i class="fa-solid fa-sign-out-alt"></i></button>
-            
-            <div class="border-l border-gray-600 pl-4 flex gap-2 font-bold font-mono">
-                <button onclick="applyLanguage('ro')" id="lang-ro" class="hover:text-yellow-400">RO</button>
-                <button onclick="applyLanguage('en')" id="lang-en" class="hover:text-yellow-400">EN</button>
-            </div>
         </div>
         <div class="bg-gray-800 px-3 py-1 rounded-full flex items-center gap-2 border border-gray-700">
             <i class="fa-solid fa-wallet text-green-400"></i>
@@ -790,24 +614,24 @@
         <div id="view-login" class="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-50">
             <div class="text-center mb-8">
                 <i class="fa-solid fa-coins text-yellow-500 text-6xl mb-4 animate-bounce"></i>
-                <h1 class="text-4xl font-bold title-font text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500" data-i18n="app_title">COINFLIP PVP</h1>
-                <p class="text-gray-400 mt-2" data-i18n="login_subtitle">Dublaj sau Nimic cu jucători reali</p>
+                <h1 class="text-4xl font-bold title-font text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">COINFLIP PVP</h1>
+                <p class="text-gray-400 mt-2">Dublaj sau Nimic cu jucători reali</p>
             </div>
             
             <div class="bg-gray-800 p-8 rounded-2xl border border-gray-700 w-full max-w-md space-y-4">
                 <button onclick="loginGoogle()" class="w-full bg-white hover:bg-gray-100 text-gray-900 font-bold py-3 rounded-xl flex items-center justify-center transition">
                     <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-6 h-6 mr-3">
-                    <span data-i18n="btn_google">Conectare cu Google</span>
+                    Conectare cu Google
                 </button>
                 
                 <div class="relative flex py-2 items-center">
                     <div class="flex-grow border-t border-gray-600"></div>
-                    <span class="flex-shrink mx-4 text-gray-500 text-sm" data-i18n="or">SAU</span>
+                    <span class="flex-shrink mx-4 text-gray-500 text-sm">SAU</span>
                     <div class="flex-grow border-t border-gray-600"></div>
                 </div>
 
                 <button onclick="loginGuest()" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-xl transition">
-                    <i class="fa-solid fa-user-secret mr-2"></i> <span data-i18n="btn_guest">Joacă ca Oaspete</span>
+                    <i class="fa-solid fa-user-secret mr-2"></i> Joacă ca Oaspete
                 </button>
             </div>
         </div>
@@ -820,38 +644,38 @@
                 <div class="flex items-center gap-4 w-full sm:w-auto">
                     <img src="" class="ui-avatar w-12 h-12 rounded-full border-2 border-yellow-500">
                     <div>
-                        <div class="text-xs text-gray-500" data-i18n="welcome">BINE AI VENIT</div>
+                        <div class="text-xs text-gray-500">BINE AI VENIT</div>
                         <div class="font-bold text-lg ui-username">Jucător</div>
                     </div>
                 </div>
                 
                 <!-- Card Bonus Zilnic -->
                 <div id="bonus-card" class="bg-gray-900/50 p-3 rounded-lg border border-gray-600 text-center w-full sm:w-auto min-w-[200px]">
-                    <div class="text-xs text-yellow-500 font-bold mb-1 uppercase tracking-wider" data-i18n="daily_bonus_title">BONUS ZILNIC</div>
-                    <button id="btn-claim-bonus" onclick="claimDailyBonus()" class="bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold py-1 px-4 rounded w-full transition disabled:opacity-50 disabled:cursor-not-allowed" data-i18n="btn_wait">
+                    <div class="text-xs text-yellow-500 font-bold mb-1 uppercase tracking-wider">BONUS ZILNIC</div>
+                    <button id="btn-claim-bonus" onclick="claimDailyBonus()" class="bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold py-1 px-4 rounded w-full transition disabled:opacity-50 disabled:cursor-not-allowed">
                         Așteaptă...
                     </button>
-                    <div id="bonus-timer" class="text-[10px] text-gray-400 mt-1 font-mono" data-i18n="timer_check">Verificare...</div>
+                    <div id="bonus-timer" class="text-[10px] text-gray-400 mt-1 font-mono">Verificare...</div>
                 </div>
             </div>
 
             <!-- Meciuri Active -->
             <div class="mb-8">
-                <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-2" data-i18n="my_bets">Pariurile Mele</h3>
+                <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-2">Pariurile Mele</h3>
                 <div id="active-games-list" class="space-y-2"></div>
             </div>
 
             <!-- Cod Privat -->
             <div class="bg-gray-800 p-4 rounded-xl border border-gray-700 mb-8">
-                <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-3" data-i18n="join_code_title">Intră cu Cod</h3>
+                <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-3">Intră cu Cod</h3>
                 <div class="flex gap-2">
-                    <input type="text" id="join-room-code" placeholder="Cod Cameră" class="bg-gray-900 text-white px-4 py-2 rounded-lg flex-1 border border-gray-600 focus:border-yellow-500 outline-none" data-i18n="placeholder_code">
-                    <button onclick="joinByCode()" class="bg-green-600 hover:bg-green-500 text-white px-6 py-2 rounded-lg font-bold" data-i18n="btn_join">INTRĂ</button>
+                    <input type="text" id="join-room-code" placeholder="Cod Cameră" class="bg-gray-900 text-white px-4 py-2 rounded-lg flex-1 border border-gray-600 focus:border-yellow-500 outline-none">
+                    <button onclick="joinByCode()" class="bg-green-600 hover:bg-green-500 text-white px-6 py-2 rounded-lg font-bold">INTRĂ</button>
                 </div>
             </div>
 
             <!-- Meci Rapid -->
-            <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4" data-i18n="quick_match">Meci Rapid (Public)</h3>
+            <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4">Meci Rapid (Public)</h3>
             <div class="grid grid-cols-4 gap-2 mb-8">
                 <button onclick="findMatch(10)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-4 rounded-xl font-bold">10p</button>
                 <button onclick="findMatch(50)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-4 rounded-xl font-bold">50p</button>
@@ -861,13 +685,12 @@
 
             <!-- Creează Cameră -->
             <div class="bg-gray-900 p-4 rounded-xl border border-gray-800">
-                <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4" data-i18n="create_room_title">Creează Cameră Privată</h3>
+                <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4">Creează Cameră Privată</h3>
                 <div class="flex gap-2 mb-2">
-                    <input type="number" id="custom-bet-size" placeholder="Suma (p)" class="bg-gray-800 text-white px-4 py-2 rounded-lg w-1/3 border border-gray-700 outline-none" data-i18n="placeholder_amount">
-                    <input type="text" id="custom-room-code" placeholder="Cod Secret (Opțional)" class="bg-gray-800 text-white px-4 py-2 rounded-lg flex-1 border border-gray-700 outline-none" data-i18n="placeholder_secret">
+                    <input type="number" id="custom-bet-size" placeholder="Suma (p)" class="bg-gray-800 text-white px-4 py-2 rounded-lg w-1/3 border border-gray-700 outline-none">
+                    <input type="text" id="custom-room-code" placeholder="Cod Secret (Opțional)" class="bg-gray-800 text-white px-4 py-2 rounded-lg flex-1 border border-gray-700 outline-none">
                 </div>
-                <button onclick="createPrivateRoom()" class="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg font-bold" data-i18n="btn_create">CREEAZĂ</button>
-                <p class="text-xs text-gray-500 mt-2 text-center" data-i18n="helper_code">Lasă codul gol pentru pariu public.</p>
+                <button onclick="createPrivateRoom()" class="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg font-bold">CREEAZĂ</button>
             </div>
         </div>
 
@@ -878,28 +701,19 @@
                     <img src="" class="ui-avatar w-10 h-10 rounded-full border border-gray-600">
                     <div><div class="text-sm font-bold ui-username">Eu</div><div class="text-xs text-green-400"><span class="ui-balance">0</span>p</div></div>
                 </div>
-                <div class="text-center"><div class="text-xs text-gray-500 uppercase" data-i18n="pot">POT</div><div class="text-2xl font-bold text-yellow-400"><span id="pot-display">0</span>p</div></div>
+                <div class="text-center"><div class="text-xs text-gray-500 uppercase">Pot</div><div class="text-2xl font-bold text-yellow-400"><span id="pot-display">0</span>p</div></div>
                 <div class="flex items-center gap-3 text-right"><div><div class="text-sm font-bold" id="opponent-name">Așteptare...</div><div class="text-xs text-gray-400" id="opponent-status">...</div></div><div class="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center font-bold"><i class="fa-solid fa-user"></i></div></div>
             </div>
 
             <div class="flex-1 flex flex-col items-center justify-center p-6 bg-gradient-to-b from-gray-900 to-black relative">
+                <div id="game-status" class="text-xl mb-8 font-bold text-center h-16">Se încarcă...</div>
                 
-                <!-- Layout control container for buttons -->
-                <div class="w-full max-w-md flex justify-center mb-6 absolute top-20 z-20">
-                    <div id="waiting-controls" class="hidden w-full px-4">
-                        <button onclick="cancelBet()" class="w-full bg-red-900/80 hover:bg-red-800 text-red-200 border border-red-700 px-4 py-3 rounded-lg text-lg font-bold shadow-lg backdrop-blur-sm transition">
-                            <i class="fa-solid fa-xmark mr-2"></i> <span data-i18n="btn_cancel">Anulează & Refund</span>
-                        </button>
-                    </div>
-                    
-                    <div id="active-controls" class="hidden w-full px-4">
-                        <button onclick="leaveGame()" class="w-full bg-red-900/80 hover:bg-red-800 text-red-200 border border-red-700 px-4 py-3 rounded-lg text-lg font-bold shadow-lg backdrop-blur-sm transition">
-                            <i class="fa-solid fa-person-running mr-2"></i> <span data-i18n="btn_leave">Ieși din joc</span>
-                        </button>
-                    </div>
+                <div id="waiting-controls" class="absolute top-24 hidden">
+                    <button onclick="cancelBet()" class="bg-red-900/50 hover:bg-red-800 text-red-200 border border-red-700 px-4 py-1 rounded text-sm"><i class="fa-solid fa-xmark mr-1"></i> Anulează & Refund</button>
                 </div>
-
-                <div id="game-status" class="text-xl mb-8 font-bold text-center h-16 mt-16" data-i18n="game_status_init">Se încarcă...</div>
+                <div id="active-controls" class="absolute top-24 hidden">
+                    <button onclick="leaveGame()" class="bg-red-900/50 hover:bg-red-800 text-red-200 border border-red-700 px-4 py-1 rounded text-sm"><i class="fa-solid fa-person-running mr-1"></i> Ieși din joc</button>
+                </div>
 
                 <div class="coin-container mb-12">
                     <div class="coin" id="coin">
@@ -912,7 +726,7 @@
         </div>
 
         <div id="view-leaderboard" class="p-6 max-w-2xl mx-auto hidden">
-            <h2 class="text-2xl font-bold mb-6 text-yellow-500"><i class="fa-solid fa-crown mr-2"></i><span data-i18n="nav_ranks">Clasament Global</span></h2>
+            <h2 class="text-2xl font-bold mb-6 text-yellow-500"><i class="fa-solid fa-crown mr-2"></i>Clasament Global</h2>
             <div id="leaderboard-list"></div>
         </div>
 
