@@ -474,7 +474,6 @@
 
             if (forceCreate) { await createRoom(betSize, joinCode); return; }
 
-            // Safe Query: Do not filter by joinCode here to avoid index requirements
             const q = query(
                 collection(db, COLLECTION_ROOMS), 
                 where('status', '==', 'waiting'), 
@@ -484,8 +483,6 @@
             
             try {
                 let snapshot = await getDocs(q);
-                
-                // Memory Filter: Find a room that is NOT mine AND has NO join code
                 const validRoom = snapshot.docs.find(d => {
                     const data = d.data();
                     return data.hostId !== currentUser.uid && !data.joinCode;
@@ -564,7 +561,6 @@
         }
 
         function renderGameState(data) {
-            // Lazy load elements to prevent crashes
             const potDisplay = document.getElementById('pot-display');
             if(potDisplay) potDisplay.innerText = data.currentPot;
             
@@ -788,138 +784,184 @@
         </div>
     </nav>
 
-    <main class="flex-1 relative overflow-y-auto">
-
-        <!-- Login Screen -->
-        <div id="view-login" class="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-50">
-            <div class="text-center mb-8">
-                <i class="fa-solid fa-coins text-yellow-500 text-6xl mb-4 animate-bounce"></i>
-                <h1 class="text-4xl font-bold title-font text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500" data-i18n="app_title">COINFLIP PVP</h1>
-                <p class="text-gray-400 mt-2" data-i18n="login_subtitle">Dublaj sau Nimic cu jucători reali</p>
+    <!-- Main Content with Ad Sidebars -->
+    <div class="flex flex-1 overflow-hidden">
+        
+        <!-- Left Sidebar (Desktop only) -->
+        <aside class="hidden lg:flex w-48 bg-gray-900 border-r border-gray-800 flex-col items-center p-4">
+            <div class="text-xs text-gray-500 uppercase mb-2">Advertisement</div>
+            <div class="w-full h-full bg-gray-800/50 rounded flex items-center justify-center border border-gray-700/50">
+                <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3085449307338324"
+                    crossorigin="anonymous"></script>
+                <!-- verticleAdd -->
+                <ins class="adsbygoogle"
+                    style="display:block"
+                    data-ad-client="ca-pub-3085449307338324"
+                    data-ad-slot="1069541647"
+                    data-ad-format="auto"
+                    data-full-width-responsive="true"></ins>
+                <script>
+                    (adsbygoogle = window.adsbygoogle || []).push({});
+                </script>
+                <span class="text-gray-600 text-sm">Ad Space</span>
             </div>
-            
-            <div class="bg-gray-800 p-8 rounded-2xl border border-gray-700 w-full max-w-md space-y-4">
-                <button onclick="loginGoogle()" class="w-full bg-white hover:bg-gray-100 text-gray-900 font-bold py-3 rounded-xl flex items-center justify-center transition">
-                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-6 h-6 mr-3">
-                    <span data-i18n="btn_google">Conectare cu Google</span>
-                </button>
-                
-                <div class="relative flex py-2 items-center">
-                    <div class="flex-grow border-t border-gray-600"></div>
-                    <span class="flex-shrink mx-4 text-gray-500 text-sm" data-i18n="or">SAU</span>
-                    <div class="flex-grow border-t border-gray-600"></div>
-                </div>
+        </aside>
 
-                <button onclick="loginGuest()" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-xl transition">
-                    <i class="fa-solid fa-user-secret mr-2"></i> <span data-i18n="btn_guest">Joacă ca Oaspete</span>
-                </button>
-            </div>
-        </div>
+        <!-- Main Game Area -->
+        <main class="flex-1 relative overflow-y-auto">
 
-        <!-- Lobby -->
-        <div id="view-lobby" class="p-6 max-w-2xl mx-auto hidden">
-            
-            <!-- Profil & Bonus -->
-            <div class="bg-gray-800 p-4 rounded-xl mb-8 border border-gray-700 flex flex-col sm:flex-row gap-4 justify-between items-center">
-                <div class="flex items-center gap-4 w-full sm:w-auto">
-                    <img src="" class="ui-avatar w-12 h-12 rounded-full border-2 border-yellow-500">
-                    <div>
-                        <div class="text-xs text-gray-500" data-i18n="welcome">BINE AI VENIT</div>
-                        <div class="font-bold text-lg ui-username">Jucător</div>
-                    </div>
+            <!-- Login Screen -->
+            <div id="view-login" class="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-50">
+                <div class="text-center mb-8">
+                    <i class="fa-solid fa-coins text-yellow-500 text-6xl mb-4 animate-bounce"></i>
+                    <h1 class="text-4xl font-bold title-font text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500" data-i18n="app_title">COINFLIP PVP</h1>
+                    <p class="text-gray-400 mt-2" data-i18n="login_subtitle">Dublaj sau Nimic cu jucători reali</p>
                 </div>
                 
-                <!-- Card Bonus Zilnic -->
-                <div id="bonus-card" class="bg-gray-900/50 p-3 rounded-lg border border-gray-600 text-center w-full sm:w-auto min-w-[200px]">
-                    <div class="text-xs text-yellow-500 font-bold mb-1 uppercase tracking-wider" data-i18n="daily_bonus_title">BONUS ZILNIC</div>
-                    <button id="btn-claim-bonus" onclick="claimDailyBonus()" class="bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold py-1 px-4 rounded w-full transition disabled:opacity-50 disabled:cursor-not-allowed" data-i18n="btn_wait">
-                        Așteaptă...
+                <div class="bg-gray-800 p-8 rounded-2xl border border-gray-700 w-full max-w-md space-y-4">
+                    <button onclick="loginGoogle()" class="w-full bg-white hover:bg-gray-100 text-gray-900 font-bold py-3 rounded-xl flex items-center justify-center transition">
+                        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-6 h-6 mr-3">
+                        <span data-i18n="btn_google">Conectare cu Google</span>
                     </button>
-                    <div id="bonus-timer" class="text-[10px] text-gray-400 mt-1 font-mono" data-i18n="timer_check">Verificare...</div>
+                    
+                    <div class="relative flex py-2 items-center">
+                        <div class="flex-grow border-t border-gray-600"></div>
+                        <span class="flex-shrink mx-4 text-gray-500 text-sm" data-i18n="or">SAU</span>
+                        <div class="flex-grow border-t border-gray-600"></div>
+                    </div>
+
+                    <button onclick="loginGuest()" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-xl transition">
+                        <i class="fa-solid fa-user-secret mr-2"></i> <span data-i18n="btn_guest">Joacă ca Oaspete</span>
+                    </button>
                 </div>
             </div>
 
-            <!-- Meciuri Active -->
-            <div class="mb-8">
-                <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-2" data-i18n="my_bets">Pariurile Mele</h3>
-                <div id="active-games-list" class="space-y-2"></div>
-            </div>
-
-            <!-- Cod Privat -->
-            <div class="bg-gray-800 p-4 rounded-xl border border-gray-700 mb-8">
-                <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-3" data-i18n="join_code_title">Intră cu Cod</h3>
-                <div class="flex gap-2">
-                    <input type="text" id="join-room-code" placeholder="Cod Cameră" class="bg-gray-900 text-white px-4 py-2 rounded-lg flex-1 border border-gray-600 focus:border-yellow-500 outline-none" data-i18n="placeholder_code">
-                    <button onclick="joinByCode()" class="bg-green-600 hover:bg-green-500 text-white px-6 py-2 rounded-lg font-bold" data-i18n="btn_join">INTRĂ</button>
-                </div>
-            </div>
-
-            <!-- Meci Rapid -->
-            <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4" data-i18n="quick_match">Meci Rapid (Public)</h3>
-            <div class="grid grid-cols-4 gap-2 mb-8">
-                <button onclick="findMatch(10)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-4 rounded-xl font-bold">10p</button>
-                <button onclick="findMatch(50)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-4 rounded-xl font-bold">50p</button>
-                <button onclick="findMatch(100)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-4 rounded-xl font-bold">100p</button>
-                <button onclick="findMatch(500)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-4 rounded-xl font-bold">500p</button>
-            </div>
-
-            <!-- Creează Cameră -->
-            <div class="bg-gray-900 p-4 rounded-xl border border-gray-800">
-                <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4" data-i18n="create_room_title">Creează Cameră Privată</h3>
-                <div class="flex gap-2 mb-2">
-                    <input type="number" id="custom-bet-size" placeholder="Suma (p)" class="bg-gray-800 text-white px-4 py-2 rounded-lg w-1/3 border border-gray-700 outline-none" data-i18n="placeholder_amount">
-                    <input type="text" id="custom-room-code" placeholder="Cod Secret (Opțional)" class="bg-gray-800 text-white px-4 py-2 rounded-lg flex-1 border border-gray-700 outline-none" data-i18n="placeholder_secret">
-                </div>
-                <button onclick="createPrivateRoom()" class="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg font-bold" data-i18n="btn_create">CREEAZĂ</button>
-                <p class="text-xs text-gray-500 mt-2 text-center" data-i18n="helper_code">Lasă codul gol pentru pariu public.</p>
-            </div>
-        </div>
-
-        <!-- Ecran Joc -->
-        <div id="view-game" class="h-full flex flex-col hidden relative">
-            <div class="bg-gray-800 p-4 flex justify-between items-center shadow-lg z-10">
-                <div class="flex items-center gap-3">
-                    <img src="" class="ui-avatar w-10 h-10 rounded-full border border-gray-600">
-                    <div><div class="text-sm font-bold ui-username">Eu</div><div class="text-xs text-green-400"><span class="ui-balance">0</span>p</div></div>
-                </div>
-                <div class="text-center"><div class="text-xs text-gray-500 uppercase" data-i18n="pot">POT</div><div class="text-2xl font-bold text-yellow-400"><span id="pot-display">0</span>p</div></div>
-                <div class="flex items-center gap-3 text-right"><div><div class="text-sm font-bold" id="opponent-name">Așteptare...</div><div class="text-xs text-gray-400" id="opponent-status">...</div></div><div class="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center font-bold"><i class="fa-solid fa-user"></i></div></div>
-            </div>
-
-            <div class="flex-1 flex flex-col items-center justify-center p-6 bg-gradient-to-b from-gray-900 to-black relative">
+            <!-- Lobby -->
+            <div id="view-lobby" class="p-6 max-w-2xl mx-auto hidden">
                 
-                <!-- Layout control container for buttons -->
-                <div class="w-full max-w-md flex justify-center mb-6 absolute top-20 z-20">
-                    <div id="waiting-controls" class="hidden w-full px-4">
-                        <button onclick="cancelBet()" class="w-full bg-red-900/80 hover:bg-red-800 text-red-200 border border-red-700 px-4 py-3 rounded-lg text-lg font-bold shadow-lg backdrop-blur-sm transition">
-                            <i class="fa-solid fa-xmark mr-2"></i> <span data-i18n="btn_cancel">Anulează & Refund</span>
-                        </button>
+                <!-- Profil & Bonus -->
+                <div class="bg-gray-800 p-4 rounded-xl mb-8 border border-gray-700 flex flex-col sm:flex-row gap-4 justify-between items-center">
+                    <div class="flex items-center gap-4 w-full sm:w-auto">
+                        <img src="" class="ui-avatar w-12 h-12 rounded-full border-2 border-yellow-500">
+                        <div>
+                            <div class="text-xs text-gray-500" data-i18n="welcome">BINE AI VENIT</div>
+                            <div class="font-bold text-lg ui-username">Jucător</div>
+                        </div>
                     </div>
                     
-                    <div id="active-controls" class="hidden w-full px-4">
-                        <button onclick="leaveGame()" class="w-full bg-red-900/80 hover:bg-red-800 text-red-200 border border-red-700 px-4 py-3 rounded-lg text-lg font-bold shadow-lg backdrop-blur-sm transition">
-                            <i class="fa-solid fa-person-running mr-2"></i> <span data-i18n="btn_leave">Ieși din joc</span>
+                    <!-- Card Bonus Zilnic -->
+                    <div id="bonus-card" class="bg-gray-900/50 p-3 rounded-lg border border-gray-600 text-center w-full sm:w-auto min-w-[200px]">
+                        <div class="text-xs text-yellow-500 font-bold mb-1 uppercase tracking-wider" data-i18n="daily_bonus_title">BONUS ZILNIC</div>
+                        <button id="btn-claim-bonus" onclick="claimDailyBonus()" class="bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold py-1 px-4 rounded w-full transition disabled:opacity-50 disabled:cursor-not-allowed" data-i18n="btn_wait">
+                            Așteaptă...
                         </button>
+                        <div id="bonus-timer" class="text-[10px] text-gray-400 mt-1 font-mono" data-i18n="timer_check">Verificare...</div>
                     </div>
                 </div>
 
-                <div id="game-status" class="text-xl mb-8 font-bold text-center h-16 mt-16" data-i18n="game_status_init">Se încarcă...</div>
+                <!-- Meciuri Active -->
+                <div class="mb-8">
+                    <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-2" data-i18n="my_bets">Pariurile Mele</h3>
+                    <div id="active-games-list" class="space-y-2"></div>
+                </div>
 
-                <div class="coin-container mb-12">
-                    <div class="coin" id="coin">
-                        <div class="coin-face heads"><i class="fa-solid fa-crown text-4xl text-white"></i></div>
-                        <div class="coin-face tails"><i class="fa-solid fa-skull text-4xl text-white"></i></div>
+                <!-- Cod Privat -->
+                <div class="bg-gray-800 p-4 rounded-xl border border-gray-700 mb-8">
+                    <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-3" data-i18n="join_code_title">Intră cu Cod</h3>
+                    <div class="flex gap-2">
+                        <input type="text" id="join-room-code" placeholder="Cod Cameră" class="bg-gray-900 text-white px-4 py-2 rounded-lg flex-1 border border-gray-600 focus:border-yellow-500 outline-none" data-i18n="placeholder_code">
+                        <button onclick="joinByCode()" class="bg-green-600 hover:bg-green-500 text-white px-6 py-2 rounded-lg font-bold" data-i18n="btn_join">INTRĂ</button>
                     </div>
                 </div>
-                <div id="game-actions" class="w-full max-w-md"><div id="my-actions" class="flex flex-col gap-2"></div></div>
+
+                <!-- Meci Rapid -->
+                <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4" data-i18n="quick_match">Meci Rapid (Public)</h3>
+                <div class="grid grid-cols-4 gap-2 mb-8">
+                    <button onclick="findMatch(10)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-4 rounded-xl font-bold">10p</button>
+                    <button onclick="findMatch(50)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-4 rounded-xl font-bold">50p</button>
+                    <button onclick="findMatch(100)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-4 rounded-xl font-bold">100p</button>
+                    <button onclick="findMatch(500)" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500 p-4 rounded-xl font-bold">500p</button>
+                </div>
+
+                <!-- Creează Cameră -->
+                <div class="bg-gray-900 p-4 rounded-xl border border-gray-800">
+                    <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4" data-i18n="create_room_title">Creează Cameră Privată</h3>
+                    <div class="flex gap-2 mb-2">
+                        <input type="number" id="custom-bet-size" placeholder="Suma (p)" class="bg-gray-800 text-white px-4 py-2 rounded-lg w-1/3 border border-gray-700 outline-none" data-i18n="placeholder_amount">
+                        <input type="text" id="custom-room-code" placeholder="Cod Secret (Opțional)" class="bg-gray-800 text-white px-4 py-2 rounded-lg flex-1 border border-gray-700 outline-none" data-i18n="placeholder_secret">
+                    </div>
+                    <button onclick="createPrivateRoom()" class="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg font-bold" data-i18n="btn_create">CREEAZĂ</button>
+                    <p class="text-xs text-gray-500 mt-2 text-center" data-i18n="helper_code">Lasă codul gol pentru pariu public.</p>
+                </div>
             </div>
-        </div>
 
-        <div id="view-leaderboard" class="p-6 max-w-2xl mx-auto hidden">
-            <h2 class="text-2xl font-bold mb-6 text-yellow-500"><i class="fa-solid fa-crown mr-2"></i><span data-i18n="nav_ranks">Clasament Global</span></h2>
-            <div id="leaderboard-list"></div>
-        </div>
+            <!-- Ecran Joc -->
+            <div id="view-game" class="h-full flex flex-col hidden relative">
+                <div class="bg-gray-800 p-4 flex justify-between items-center shadow-lg z-10">
+                    <div class="flex items-center gap-3">
+                        <img src="" class="ui-avatar w-10 h-10 rounded-full border border-gray-600">
+                        <div><div class="text-sm font-bold ui-username">Eu</div><div class="text-xs text-green-400"><span class="ui-balance">0</span>p</div></div>
+                    </div>
+                    <div class="text-center"><div class="text-xs text-gray-500 uppercase" data-i18n="pot">POT</div><div class="text-2xl font-bold text-yellow-400"><span id="pot-display">0</span>p</div></div>
+                    <div class="flex items-center gap-3 text-right"><div><div class="text-sm font-bold" id="opponent-name">Așteptare...</div><div class="text-xs text-gray-400" id="opponent-status">...</div></div><div class="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center font-bold"><i class="fa-solid fa-user"></i></div></div>
+                </div>
 
-    </main>
+                <div class="flex-1 flex flex-col items-center justify-center p-6 bg-gradient-to-b from-gray-900 to-black relative">
+                    
+                    <!-- Layout control container for buttons -->
+                    <div class="w-full max-w-md flex justify-center mb-6 absolute top-20 z-20">
+                        <div id="waiting-controls" class="hidden w-full px-4">
+                            <button onclick="cancelBet()" class="w-full bg-red-900/80 hover:bg-red-800 text-red-200 border border-red-700 px-4 py-3 rounded-lg text-lg font-bold shadow-lg backdrop-blur-sm transition">
+                                <i class="fa-solid fa-xmark mr-2"></i> <span data-i18n="btn_cancel">Anulează & Refund</span>
+                            </button>
+                        </div>
+                        
+                        <div id="active-controls" class="hidden w-full px-4">
+                            <button onclick="leaveGame()" class="w-full bg-red-900/80 hover:bg-red-800 text-red-200 border border-red-700 px-4 py-3 rounded-lg text-lg font-bold shadow-lg backdrop-blur-sm transition">
+                                <i class="fa-solid fa-person-running mr-2"></i> <span data-i18n="btn_leave">Ieși din joc</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="game-status" class="text-xl mb-8 font-bold text-center h-16 mt-16" data-i18n="game_status_init">Se încarcă...</div>
+
+                    <div class="coin-container mb-12">
+                        <div class="coin" id="coin">
+                            <div class="coin-face heads"><i class="fa-solid fa-crown text-4xl text-white"></i></div>
+                            <div class="coin-face tails"><i class="fa-solid fa-skull text-4xl text-white"></i></div>
+                        </div>
+                    </div>
+                    <div id="game-actions" class="w-full max-w-md"><div id="my-actions" class="flex flex-col gap-2"></div></div>
+                </div>
+            </div>
+
+            <div id="view-leaderboard" class="p-6 max-w-2xl mx-auto hidden">
+                <h2 class="text-2xl font-bold mb-6 text-yellow-500"><i class="fa-solid fa-crown mr-2"></i><span data-i18n="nav_ranks">Clasament Global</span></h2>
+                <div id="leaderboard-list"></div>
+            </div>
+
+        </main>
+
+        <!-- Right Sidebar (Desktop only) -->
+        <aside class="hidden lg:flex w-48 bg-gray-900 border-l border-gray-800 flex-col items-center p-4">
+            <div class="text-xs text-gray-500 uppercase mb-2">Advertisement</div>
+            <div class="w-full h-full bg-gray-800/50 rounded flex items-center justify-center border border-gray-700/50">
+                <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3085449307338324"
+                    crossorigin="anonymous"></script>
+                    <!-- verticleAdd -->
+                    <ins class="adsbygoogle"
+                        style="display:block"
+                        data-ad-client="ca-pub-3085449307338324"
+                        data-ad-slot="1069541647"
+                        data-ad-format="auto"
+                        data-full-width-responsive="true"></ins>
+                    <script>
+                        (adsbygoogle = window.adsbygoogle || []).push({});
+                    </script>
+                <span class="text-gray-600 text-sm">Ad Space</span>
+            </div>
+        </aside>
+
+    </div>
 </body>
 </html>
