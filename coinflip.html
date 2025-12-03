@@ -1,15 +1,16 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ro">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PvP Double or Nothing</title>
+    
+    <!-- 1. GOOGLE ADSENSE (GLOBAL SCRIPT) - REQUIRED FOR VERIFICATION -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3085449307338324"
+     crossorigin="anonymous"></script>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    
-    <!-- addsense -->
-     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3085449307338324"
-     crossorigin="anonymous"></script>
     
     <!-- Firebase SDKs -->
     <script type="module">
@@ -45,7 +46,7 @@
         const db = getFirestore(app);
         
         // --- LOCALIZATION SYSTEM ---
-        let currentLang = localStorage.getItem('coinflip_lang') || 'en';
+        let currentLang = localStorage.getItem('coinflip_lang') || 'ro';
 
         const translations = {
             ro: {
@@ -796,8 +797,6 @@
             <div class="text-xs text-gray-500 uppercase mb-2">Advertisement</div>
             <div class="w-full h-full bg-gray-800/50 rounded flex items-center justify-center border border-gray-700/50 overflow-hidden" style="min-width: 160px; min-height: 600px;">
                 
-                <!-- Google Ad Code (Left) -->
-                <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3085449307338324" crossorigin="anonymous"></script>
                 <!-- verticleAdd -->
                 <ins class="adsbygoogle"
                      style="display:block; width: 100%; height: 100%;"
@@ -954,8 +953,6 @@
             <div class="text-xs text-gray-500 uppercase mb-2">Advertisement</div>
             <div class="w-full h-full bg-gray-800/50 rounded flex items-center justify-center border border-gray-700/50 overflow-hidden" style="min-width: 160px; min-height: 600px;">
                 
-                <!-- Google Ad Code (Right) -->
-                <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3085449307338324" crossorigin="anonymous"></script>
                 <!-- verticleAdd -->
                 <ins class="adsbygoogle"
                      style="display:block; width: 100%; height: 100%;"
