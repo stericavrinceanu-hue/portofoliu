@@ -8,14 +8,36 @@ header { text-align: center; padding: 60px 20px 20px; }
 header h1 { font-size: 3rem; margin-bottom: 10px; }
 header p { font-size: 1.2rem; color: #bbb; max-width: 600px; margin: 0 auto; }
 
-/* Gallery Sections */
-.gallery-section { padding: 40px 20px; max-width: 1200px; margin: 0 auto; }
-.gallery-section h2 { text-align: center; margin-bottom: 15px; font-size: 2rem; }
+/* -----------------------------------------
+   Gallery Sections (The "Boxes" & Centered Text)
+   ----------------------------------------- */
+.gallery-section { 
+    padding: 50px 30px; 
+    max-width: 1200px; 
+    margin: 40px auto; /* Adds space (lines) between each game box */
+    
+    /* Box Styling */
+    background-color: #1a1a24; /* Slightly lighter background to separate from the main page */
+    border-radius: 16px; /* Rounded corners */
+    border-top: 4px solid #4046ff; /* A stylish blue line at the top of each box */
+    box-shadow: 0 10px 30px rgba(0,0,0,0.6); /* Adds depth so it looks like a floating box */
+    
+    /* Centering */
+    text-align: center; /* Enforces all text to be centered */
+}
+
+.gallery-section h2 { margin-bottom: 15px; font-size: 2rem; }
 .gallery-section h2 a { color: #eee; text-decoration: none; transition: color 0.3s; }
 .gallery-section h2 a:hover { color: #4046ff; }
-.gallery-section p { text-align: center; margin-bottom: 30px; color: #ccc; max-width: 800px; margin-left: auto; margin-right: auto; }
+.gallery-section p { 
+    margin-bottom: 30px; 
+    color: #ccc; 
+    max-width: 800px; 
+    margin-left: auto; 
+    margin-right: auto; 
+}
 
-/* Grid Layout */
+/* Grid Layout for Images */
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
 .gallery-item { width: 100%; border-radius: 10px; cursor: pointer; transition: transform 0.3s, box-shadow 0.3s; object-fit: cover; }
 .gallery-item:hover { transform: scale(1.05); box-shadow: 0 0 20px #4046ff; }
@@ -49,7 +71,7 @@ header p { font-size: 1.2rem; color: #bbb; max-width: 600px; margin: 0 auto; }
 }
 
 /* Footer */
-footer { text-align: center; padding: 20px; background: #1a1a1a; font-size: 0.9rem; margin-top: 40px; }
+footer { text-align: center; padding: 20px; background: #1a1a1a; font-size: 0.9rem; margin-top: 60px; }
 footer a { color: #4046ff; text-decoration: none; }
 footer a:hover { text-decoration: underline; }
 
@@ -76,8 +98,8 @@ footer a:hover { text-decoration: underline; }
     left: 0;
     width: 100%;
     height: 100%;
-    pointer-events: none; /* Prevents blocking clicks */
-    z-index: -1; /* Keeps it behind content */
+    pointer-events: none;
+    z-index: -1;
 }
 
 .star {
