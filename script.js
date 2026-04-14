@@ -15,13 +15,13 @@ closeBtn.addEventListener('click', () => {
     lightbox.style.display = 'none';
 });
 
+// Close lightbox when clicking outside the image
 lightbox.addEventListener('click', e => {
     if (e.target === lightbox) lightbox.style.display = 'none';
 });
 
-// Animatii la scroll cu Intersection Observer
+// Scroll animations using Intersection Observer
 const faders = document.querySelectorAll('.fade-in, .slide-in-left, .slide-in-right');
-
 const appearOptions = { threshold: 0.2 };
 
 const appearOnScroll = new IntersectionObserver((entries, observer) => {
@@ -36,41 +36,40 @@ const appearOnScroll = new IntersectionObserver((entries, observer) => {
 faders.forEach(fader => appearOnScroll.observe(fader));
 
 
-// Fundal stele
+// Stars Background Generator
 const starsContainer = document.getElementById('stars');
 
-// Tipurile de stele (înlocuiește cu path-urile reale)
+// Star types (make sure these paths match your actual images)
 const starTypes = [
     { src: 'images/star5.png', size: 5 },
     { src: 'images/star3.png', size: 3 },
     { src: 'images/star4.png', size: 4 }
 ];
 
-// Numărul de stele
-const numStars = 100; // poți ajusta
+// Number of stars
+const numStars = 100; 
 
 for (let i = 0; i < numStars; i++) {
     const star = document.createElement('div');
     const type = starTypes[Math.floor(Math.random() * starTypes.length)];
 
     star.classList.add('star');
-    star.style.width = type.size *2 + 'px';
-    star.style.height = type.size*2 + 'px';
+    star.style.width = (type.size * 2) + 'px';
+    star.style.height = (type.size * 2) + 'px';
     star.style.backgroundImage = `url(${type.src})`;
 
-    // Poziție aleatorie
+    // Random positioning
     star.style.top = Math.random() * window.innerHeight + 'px';
     star.style.left = Math.random() * window.innerWidth + 'px';
 
-    // Optional: viteză ușoară de mișcare pentru efect parallax
+    // Optional: slight movement speed for a parallax effect
     star.style.transition = `transform ${1 + Math.random() * 2}s linear`;
 
     starsContainer.appendChild(star);
 }
 
+// Game Launcher
 function openGame() {
-    // Replace this with your actual hosted URL
-    //[https://github.com/stericavrinceanu-hue/portofoliu/coinflip.html](https://github.com/stericavrinceanu-hue/portofoliu/coinflip.html)
     const gameUrl = 'https://pvpcoinflip.com/'; 
     
     // Opens a window sized for the game

@@ -1,80 +1,41 @@
 /* Font & Reset */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: 'Inter', sans-serif; background: #121212; color: #eee; line-height: 1.6; }
+body { font-family: 'Inter', sans-serif; background: #121212; color: #eee; line-height: 1.6; overflow-x: hidden; }
 
 /* Header */
-header { text-align: center; padding: 60px 20px; }
+header { text-align: center; padding: 60px 20px 20px; }
 header h1 { font-size: 3rem; margin-bottom: 10px; }
-header p { font-size: 1.2rem; color: #bbb; }
+header p { font-size: 1.2rem; color: #bbb; max-width: 600px; margin: 0 auto; }
 
-/* Galerie */
-#gallery { padding: 40px 20px; }
-#gallery h2 { text-align: center; margin-bottom: 30px; font-size: 2rem; }
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
-.gallery-item { width: 100%; border-radius: 10px; cursor: pointer; transition: transform 0.3s, box-shadow 0.3s; }
+/* Gallery Sections */
+.gallery-section { padding: 40px 20px; max-width: 1200px; margin: 0 auto; }
+.gallery-section h2 { text-align: center; margin-bottom: 15px; font-size: 2rem; }
+.gallery-section h2 a { color: #eee; text-decoration: none; transition: color 0.3s; }
+.gallery-section h2 a:hover { color: #4046ff; }
+.gallery-section p { text-align: center; margin-bottom: 30px; color: #ccc; max-width: 800px; margin-left: auto; margin-right: auto; }
+
+/* Grid Layout */
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
+.gallery-item { width: 100%; border-radius: 10px; cursor: pointer; transition: transform 0.3s, box-shadow 0.3s; object-fit: cover; }
 .gallery-item:hover { transform: scale(1.05); box-shadow: 0 0 20px #4046ff; }
 
-/* Footer */
-footer { text-align: center; padding: 20px; background: #1a1a1a; font-size: 0.9rem; }
-footer a { color: #4046ff; text-decoration: none; }
-footer a:hover { text-decoration: underline; }
+/* Buttons Container */
+.button-container { display: flex; justify-content: center; gap: 15px; flex-wrap: wrap; margin-top: 20px; }
 
-/* Lightbox */
-.lightbox { display: none; position: fixed; z-index: 1000; padding-top: 60px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.9); }
-.lightbox-content { margin: auto; display: block; max-width: 90%; max-height: 80%; }
-.close { position: absolute; top: 20px; right: 35px; color: #fff; font-size: 40px; font-weight: bold; cursor: pointer; transition: color 0.3s; }
-.close:hover { color: #4046ff; }
-
-/* Animatii la scroll */
-.fade-in { opacity: 0; transform: translateY(20px); transition: opacity 0.8s ease-out, transform 0.8s ease-out; }
-.fade-in.visible { opacity: 1; transform: translateY(0); }
-
-.slide-in-left { opacity: 0; transform: translateX(-50px); transition: opacity 0.8s ease-out, transform 0.8s ease-out; }
-.slide-in-left.visible { opacity: 1; transform: translateX(0); }
-
-.slide-in-right { opacity: 0; transform: translateX(50px); transition: opacity 0.8s ease-out, transform 0.8s ease-out; }
-.slide-in-right.visible { opacity: 1; transform: translateX(0); }
-
-
-#stars {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none; /* ca să nu blocheze click-uri */
-    z-index: -1; /* în spatele conținutului */
-}
-
-.star {
-    position: absolute;
-    background-size: cover;
-    background-repeat: no-repeat;
-}
-
-/* Optional: animație mică de flicker */
-@keyframes flicker {
-    0%, 100% { opacity: 0.8; }
-    50% { opacity: 0.4; }
-}
-
-.star {
-    animation: flicker 2s infinite ease-in-out;
-}
-/*button */
+/* Play Button */
 .play-btn {
     background-color: #0f172a; /* Dark Blue */
     color: #fbbf24; /* Gold/Yellow */
     border: 2px solid #fbbf24;
     padding: 12px 24px;
-    font-size: 18px;
+    font-size: 16px;
     font-weight: bold;
-    font-family: sans-serif;
+    font-family: 'Inter', sans-serif;
     text-transform: uppercase;
     cursor: pointer;
     border-radius: 8px;
-    text-decoration: none; /* For the <a> tag version */
+    text-decoration: none;
     display: inline-block;
     transition: all 0.3s ease;
     box-shadow: 0 0 10px rgba(251, 191, 36, 0.2);
@@ -85,4 +46,49 @@ footer a:hover { text-decoration: underline; }
     color: #000;
     box-shadow: 0 0 20px rgba(251, 191, 36, 0.6);
     transform: translateY(-2px);
+}
+
+/* Footer */
+footer { text-align: center; padding: 20px; background: #1a1a1a; font-size: 0.9rem; margin-top: 40px; }
+footer a { color: #4046ff; text-decoration: none; }
+footer a:hover { text-decoration: underline; }
+
+/* Lightbox */
+.lightbox { display: none; position: fixed; z-index: 1000; padding-top: 60px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.9); }
+.lightbox-content { margin: auto; display: block; max-width: 90%; max-height: 80vh; border-radius: 8px; }
+.close { position: absolute; top: 20px; right: 35px; color: #fff; font-size: 40px; font-weight: bold; cursor: pointer; transition: color 0.3s; }
+.close:hover { color: #4046ff; }
+
+/* Scroll Animations */
+.fade-in { opacity: 0; transform: translateY(20px); transition: opacity 0.8s ease-out, transform 0.8s ease-out; }
+.fade-in.visible { opacity: 1; transform: translateY(0); }
+
+.slide-in-left { opacity: 0; transform: translateX(-50px); transition: opacity 0.8s ease-out, transform 0.8s ease-out; }
+.slide-in-left.visible { opacity: 1; transform: translateX(0); }
+
+.slide-in-right { opacity: 0; transform: translateX(50px); transition: opacity 0.8s ease-out, transform 0.8s ease-out; }
+.slide-in-right.visible { opacity: 1; transform: translateX(0); }
+
+/* Stars Background */
+#stars {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none; /* Prevents blocking clicks */
+    z-index: -1; /* Keeps it behind content */
+}
+
+.star {
+    position: absolute;
+    background-size: cover;
+    background-repeat: no-repeat;
+    animation: flicker 2s infinite ease-in-out;
+}
+
+/* Star Flicker Animation */
+@keyframes flicker {
+    0%, 100% { opacity: 0.8; }
+    50% { opacity: 0.4; }
 }
